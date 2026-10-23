@@ -28,6 +28,14 @@
   .buybox { background:#fff; border-radius:12px; padding:18px; margin-top:14px; color:var(--ink); }
   .buybox .note { font-size:14px; color:var(--muted); margin:10px 0 0; }
   #status { margin-top:12px; font-size:16px; }
+  .loc { margin-bottom:14px; }
+  .loc label { display:block; font-size:15px; font-weight:600; margin:0 0 4px; }
+  .loc select { width:100%; padding:10px; font-size:16px; border:1px solid #ccc; border-radius:8px; background:#fff; margin-bottom:10px; font-family:inherit; }
+  .loc .chk { display:flex; gap:8px; align-items:center; font-weight:400; font-size:15px; margin-bottom:10px; }
+  .totals { font-size:15px; border-top:1px solid #eee; padding-top:10px; margin-bottom:12px; }
+  .totals div { display:flex; justify-content:space-between; }
+  .totals .t { font-weight:700; font-size:17px; margin-top:4px; }
+  #paypal-buttons.locked { opacity:.45; }
   #status.ok { background:#e8f5e9; color:#1b5e20; padding:14px; border-radius:8px; }
   #status.err { background:#fdecea; color:#8c1d18; padding:14px; border-radius:8px; }
   #emailForm { display:none; margin-top:10px; }
@@ -79,9 +87,23 @@
       <h1>Fiddle Hornpipe Duets, Volume 1</h1>
       <p>Twelve lively hornpipes for two violins: six traditional tunes and six new tunes in the same style, each written out as a full 48-bar arrangement with its own harmony part.</p>
       <p>Made for teacher and student, two friends, or a whole violin studio. Print as many copies as you need for your own students and ensemble.</p>
-      <div class="price">$<span id="price">14.99</span><small>88-page PDF</small></div>
+      <div class="price">$<span id="price">4.95</span><small>88-page PDF</small></div>
       <div class="buybox">
-        <div id="paypal-buttons"><p class="note">Loading secure checkout...</p></div>
+        <div class="loc" id="locBox">
+          <label for="state">Where do you live?</label>
+          <select id="state" onchange="locChanged()"><option value="">Choose your state...</option></select>
+          <div id="wiBox" style="display:none">
+            <label for="county">Wisconsin county</label>
+            <select id="county" onchange="locChanged()"><option value="">Choose your county...</option></select>
+            <label class="chk" id="mkeBox" style="display:none"><input type="checkbox" id="mkeCity" onchange="locChanged()"> I live inside the City of Milwaukee</label>
+          </div>
+          <div class="totals" id="totals" style="display:none">
+            <div><span>Fiddle Hornpipe Duets PDF</span><span id="tPrice"></span></div>
+            <div id="tTaxRow"><span id="tTaxLabel">Wisconsin sales tax</span><span id="tTax"></span></div>
+            <div class="t"><span>Total</span><span id="tTotal"></span></div>
+          </div>
+        </div>
+        <div id="paypal-buttons" class="locked"><p class="note">Loading secure checkout...</p></div>
         <div id="status"></div>
         <div id="emailForm">
           <div>We could not read an email address from your payment. Where should we send your PDF?</div>
@@ -155,6 +177,7 @@
     <h2>Questions</h2>
     <details><summary>How do I get the music after I pay?</summary><p>The PDF is emailed to the address on your PayPal or Venmo account within a minute or two. If you do not see it, check your spam or promotions folder, or email stradman100@gmail.com.</p></details>
     <details><summary>Can I print copies for my students?</summary><p>Yes. You may print as many copies as you need for yourself, your family, your own students, and your own ensemble. Please do not share or upload the PDF file itself. Schools and teachers who want a wider license can email me.</p></details>
+    <details><summary>Why do you ask where I live?</summary><p>Wisconsin requires sales tax on digital purchases by Wisconsin residents. If you live in Wisconsin, the state and county sales tax is added at checkout. Buyers outside Wisconsin pay no sales tax.</p></details>
     <details><summary>Do I need a PayPal account?</summary><p>No. You can pay with Venmo, PayPal, or a debit or credit card.</p></details>
     <details><summary>What level is this music?</summary><p>Level 1 tunes suit students comfortable with eighth notes in first position. Level 3 tunes add running sixteenths and triplets. Both parts of every tune stay in first position.</p></details>
     <details><summary>How should I print it?</summary><p>Print at "Actual size" (100%), not "Fit to page." Print double-sided so each part lands on facing pages in a binder. Heavier paper holds up best on a music stand.</p></details>
@@ -166,7 +189,7 @@
     <h2>About Bruce Bowers</h2>
     <p>Bruce Bowers is a Suzuki violin teacher in the Pulaski and Green Bay area of Wisconsin, with more than 45 years of playing experience and over 20 years of teaching. Six of the tunes in this collection are named for places in northeast Wisconsin.</p>
     <p>Bruce is always looking for more students, virtual and local. Please contact him at <a href="mailto:stradman100@gmail.com">stradman100@gmail.com</a>.</p>
-    <div class="cta2"><a href="#buy">Get the PDF for $<span class="price2">14.99</span></a></div>
+    <div class="cta2"><a href="#buy">Get the PDF for $<span class="price2">4.95</span></a></div>
   </div>
 </section>
 
@@ -183,7 +206,52 @@
   var PRODUCT_ID = 'FHD-V1';
   // ================================================================================
 
-  var LAST_ORDER = null;
+  var LAST_ORDER = null, CFG = null, PRODUCT = null;
+  var STATES = [['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],['CT','Connecticut'],
+    ['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],
+    ['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],
+    ['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],
+    ['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],
+    ['OR','Oregon'],['PA','Pennsylvania'],['PR','Puerto Rico'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],
+    ['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
+    ['XX','Outside the United States']];
+
+  function val(id) { return document.getElementById(id).value; }
+
+  function location_() {
+    return { state: val('state'), county: val('county'), milwaukeeCity: document.getElementById('mkeCity').checked };
+  }
+
+  // Shows the tax and total. The Apps Script recalculates the real amount on the server.
+  function locChanged() {
+    var st = val('state'), wi = st === 'WI' && CFG && CFG.tax.on;
+    document.getElementById('wiBox').style.display = wi ? 'block' : 'none';
+    document.getElementById('mkeBox').style.display = wi && val('county') === 'Milwaukee' ? 'flex' : 'none';
+    if (val('county') !== 'Milwaukee') document.getElementById('mkeCity').checked = false;
+    var ready = !!st && (!wi || !!val('county'));
+    var price = PRODUCT ? Number(PRODUCT.price) : 0, rate = 0;
+    if (wi && val('county')) {
+      var c = CFG.tax.counties.filter(function (x) { return x.name === val('county'); })[0];
+      rate = CFG.tax.stateRate + (c ? c.rate : 0) + (document.getElementById('mkeCity').checked ? CFG.tax.milwaukeeCityRate : 0);
+    }
+    var tax = Math.round(price * rate * 100 + 1e-7) / 100;
+    document.getElementById('totals').style.display = ready ? 'block' : 'none';
+    document.getElementById('tTaxRow').style.display = tax > 0 ? 'flex' : 'none';
+    document.getElementById('tPrice').textContent = '$' + price.toFixed(2);
+    document.getElementById('tTaxLabel').textContent = 'Wisconsin sales tax (' + (Math.round(rate * 1000) / 10) + '%)';
+    document.getElementById('tTax').textContent = '$' + tax.toFixed(2);
+    document.getElementById('tTotal').textContent = '$' + (price + tax).toFixed(2);
+    document.getElementById('paypal-buttons').classList.toggle('locked', !ready);
+    if (ready) status('');
+    return ready;
+  }
+
+  function fillLocationLists(cfg) {
+    var s = document.getElementById('state');
+    STATES.forEach(function (x) { var o = document.createElement('option'); o.value = x[0]; o.textContent = x[1]; s.appendChild(o); });
+    var c = document.getElementById('county');
+    cfg.tax.counties.forEach(function (x) { var o = document.createElement('option'); o.value = x.name; o.textContent = x.name + ' County'; c.appendChild(o); });
+  }
 
   function api(body) {
     // text/plain avoids a browser preflight request, which Apps Script cannot answer.
@@ -197,6 +265,8 @@
   function loadPayPal(cfg) {
     var p = cfg.products.filter(function (x) { return x.id === PRODUCT_ID; })[0];
     if (!p) { status('This item is not available right now.', 'err'); document.getElementById('paypal-buttons').innerHTML = ''; return; }
+    CFG = cfg; PRODUCT = p;
+    fillLocationLists(cfg);
     document.getElementById('price').textContent = p.price;
     document.querySelectorAll('.price2').forEach(function (e) { e.textContent = p.price; });
     var sdk = document.createElement('script');
@@ -211,9 +281,16 @@
     document.getElementById('paypal-buttons').innerHTML = '';
     paypal.Buttons({
       style: { layout: 'vertical', shape: 'rect', label: 'pay' },
+      onClick: function (data, actions) {
+        if (!locChanged()) {
+          status('Please choose where you live first' + (val('state') === 'WI' ? ', including your county' : '') + '.', 'err');
+          return actions.reject();
+        }
+        return actions.resolve();
+      },
       createOrder: function () {
         status('');
-        return api({ action: 'create', productId: PRODUCT_ID }).then(function (j) { return j.id; });
+        return api({ action: 'create', productId: PRODUCT_ID, location: location_() }).then(function (j) { return j.id; });
       },
       onApprove: function (data, actions) {
         status('Finishing your payment... please keep this page open.');
@@ -230,6 +307,7 @@
         });
       },
       onError: function (err) {
+        if (err && /choose/.test(String(err.message || err))) { status(String(err.message || err).replace(/^Error:\s*/, ''), 'err'); return; }
         status('Something went wrong and you have not been charged. Please try again, or email stradman100@gmail.com.', 'err');
         console.error(err);
       }
