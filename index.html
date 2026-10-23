@@ -112,7 +112,7 @@
           <input type="email" id="buyerEmail" placeholder="you@example.com">
           <button onclick="sendEmail()">Send my PDF</button>
         </div>
-        <p class="note">Pay securely with PayPal, Venmo, or a debit or credit card. Your PDF arrives by email within a minute or two. Check your spam folder if you do not see it.</p>
+        <p class="note">Pay securely with PayPal or a debit or credit card. Your PDF arrives by email within a minute or two. Check your spam folder if you do not see it.</p>
       </div>
     </div>
   </div>
@@ -177,10 +177,10 @@
 <section class="faq">
   <div class="wrap">
     <h2>Questions</h2>
-    <details><summary>How do I get the music after I pay?</summary><p>The PDF is emailed to the address on your PayPal or Venmo account within a minute or two. If you do not see it, check your spam or promotions folder, or email stradman100@gmail.com.</p></details>
+    <details><summary>How do I get the music after I pay?</summary><p>The PDF is emailed to the address on your PayPal account within a minute or two. If you do not see it, check your spam or promotions folder, or email stradman100@gmail.com.</p></details>
     <details><summary>Can I print copies for my students?</summary><p>Yes. You may print as many copies as you need for yourself, your family, your own students, and your own ensemble. Please do not share or upload the PDF file itself. Schools and teachers who want a wider license can email me.</p></details>
     <details><summary>Why do you ask where I live?</summary><p>Wisconsin requires sales tax on digital purchases by Wisconsin residents. If you live in Wisconsin, the state and county sales tax is added at checkout. Buyers outside Wisconsin pay no sales tax.</p></details>
-    <details><summary>Do I need a PayPal account?</summary><p>No. You can pay with Venmo, PayPal, or a debit or credit card.</p></details>
+    <details><summary>Do I need a PayPal account?</summary><p>No. You can pay with PayPal or with a debit or credit card, no PayPal account needed.</p></details>
     <details><summary>What level is this music?</summary><p>Level 1 tunes suit students comfortable with eighth notes in first position. Level 3 tunes add running sixteenths and triplets. Both parts of every tune stay in first position.</p></details>
     <details><summary>How should I print it?</summary><p>Print at "Actual size" (100%), not "Fit to page." Print double-sided so each part lands on facing pages in a binder. Heavier paper holds up best on a music stand.</p></details>
   </div>
@@ -226,7 +226,7 @@
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash');
     setTimeout(function () { var s = document.getElementById(val('state') ? 'paypal-buttons' : 'state'); if (s.focus) s.focus(); }, 600);
-    if (!val('state')) status('Step 1: choose where you live. Step 2: click PayPal, Venmo, or Debit or Credit Card.', '');
+    if (!val('state')) status('Step 1: choose where you live. Step 2: click PayPal or Debit or Credit Card.', '');
     return false;
   }
 
@@ -283,7 +283,7 @@
     document.querySelectorAll('.price2').forEach(function (e) { e.textContent = p.price; });
     var sdk = document.createElement('script');
     sdk.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(cfg.clientId) +
-              '&currency=' + encodeURIComponent(p.currency) + '&intent=capture&enable-funding=venmo&components=buttons';
+              '&currency=' + encodeURIComponent(p.currency) + '&intent=capture&disable-funding=venmo&components=buttons';
     sdk.onload = function () { renderButtons(); };
     sdk.onerror = function () { status('Checkout could not load. Please refresh the page.', 'err'); };
     document.head.appendChild(sdk);
