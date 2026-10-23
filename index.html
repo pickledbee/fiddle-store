@@ -28,7 +28,9 @@
   .buybox { background:#fff; border-radius:12px; padding:18px; margin-top:14px; color:var(--ink); }
   .buybox .note { font-size:14px; color:var(--muted); margin:10px 0 0; }
   #status { margin-top:12px; font-size:16px; }
-  .loc { margin-bottom:14px; }
+  .loc { margin-bottom:14px; scroll-margin-top:20px; }
+  .loc.flash { animation: flash 1.6s ease-out; border-radius:10px; }
+  @keyframes flash { 0% { box-shadow:0 0 0 4px var(--gold); } 100% { box-shadow:0 0 0 4px rgba(201,164,92,0); } }
   .loc label { display:block; font-size:15px; font-weight:600; margin:0 0 4px; }
   .loc select { width:100%; padding:10px; font-size:16px; border:1px solid #ccc; border-radius:8px; background:#fff; margin-bottom:10px; font-family:inherit; }
   .loc .chk { display:flex; gap:8px; align-items:center; font-weight:400; font-size:15px; margin-bottom:10px; }
@@ -189,7 +191,7 @@
     <h2>About Bruce Bowers</h2>
     <p>Bruce Bowers is a Suzuki violin teacher in the Pulaski and Green Bay area of Wisconsin, with more than 45 years of playing experience and over 20 years of teaching. Six of the tunes in this collection are named for places in northeast Wisconsin.</p>
     <p>Bruce is always looking for more students, virtual and local. Please contact him at <a href="mailto:stradman100@gmail.com">stradman100@gmail.com</a>.</p>
-    <div class="cta2"><a href="#buy">Get the PDF for $<span class="price2">4.95</span></a></div>
+    <div class="cta2"><a href="#locBox" onclick="return goToCheckout()">Buy the PDF for $<span class="price2">4.95</span></a></div>
   </div>
 </section>
 
@@ -217,6 +219,16 @@
     ['XX','Outside the United States']];
 
   function val(id) { return document.getElementById(id).value; }
+
+  // The lower "Buy" button scrolls to the checkout box and opens the state menu step.
+  function goToCheckout() {
+    var box = document.getElementById('locBox');
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash');
+    setTimeout(function () { var s = document.getElementById(val('state') ? 'paypal-buttons' : 'state'); if (s.focus) s.focus(); }, 600);
+    if (!val('state')) status('Step 1: choose where you live. Step 2: click PayPal, Venmo, or Debit or Credit Card.', '');
+    return false;
+  }
 
   function location_() {
     return { state: val('state'), county: val('county'), milwaukeeCity: document.getElementById('mkeCity').checked };
