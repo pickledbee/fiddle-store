@@ -362,8 +362,16 @@
     status('Store setup: paste your web app address into the WEB_APP_URL line of index.html.', 'err');
     document.getElementById('paypal-buttons').innerHTML = '';
   } else {
-    api({ action: 'config' }).then(loadPayPal).catch(function (e) {
-      status('Checkout could not load right now. Please refresh, or email stradman100@gmail.com to order.', 'err');
+    api({ action: 'config' }).then(function (cfg) {
+      if (!cfg.tax) throw new Error('Store script is an older version. Redeploy the newest Code.gs as a New version.');
+      if (!cfg.clientId) throw new Error('PayPal Client ID is not set in the admin panel Settings tab.');
+      loadPayPal(cfg);
+    }).catch(function (e) {
+      var why = String((e && e.message) || e || '');
+      if (/JSON|Unexpected token|Failed to fetch|NetworkError|Load failed/i.test(why)) why = 'The store script did not answer. In Apps Script, set the web app to Execute as Me and Who has access: Anyone, then deploy a New version.';
+      console.error('Checkout setup error:', e);
+      status('Checkout could not load right now. Please refresh, or email stradman100@gmail.com to order.' +
+             '<div style="font-size:13px;margin-top:6px;opacity:.85">Details for the store owner: ' + why.replace(/</g, '&lt;') + '</div>', 'err');
       document.getElementById('paypal-buttons').innerHTML = '';
     });
   }
