@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-6CC4WJ9LQ8"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-6CC4WJ9LQ8');
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fiddle Hornpipe Duets, Volume 1 | Bruce Bowers</title>
@@ -304,6 +313,7 @@
       },
       createOrder: function () {
         status('');
+        try { gtag('event', 'begin_checkout', { currency: PRODUCT.currency, value: Number(PRODUCT.price), items: [{ item_id: PRODUCT_ID }] }); } catch (e) {}
         return api({ action: 'create', productId: PRODUCT_ID, location: location_() }).then(function (j) { return j.id; });
       },
       onApprove: function (data, actions) {
@@ -311,6 +321,10 @@
         return api({ action: 'capture', orderId: data.orderID }).then(function (j) {
           if (j.declined) { status('Your payment method was declined. Please try another one.', 'err'); return actions.restart(); }
           LAST_ORDER = data.orderID;
+          try {
+            gtag('event', 'purchase', { transaction_id: data.orderID, currency: PRODUCT.currency,
+              value: Number(PRODUCT.price), items: [{ item_id: PRODUCT_ID, item_name: 'Fiddle Hornpipe Duets, Volume 1', price: Number(PRODUCT.price), quantity: 1 }] });
+          } catch (e) {}
           if (j.needEmail) { status('Payment received. Thank you!', 'ok'); document.getElementById('emailForm').style.display = 'block'; return; }
           if (j.delivery === 'SENT') {
             status('<b>Thank you!</b> Your payment went through and your PDF is on its way to ' + (j.email || 'your email') +
@@ -336,6 +350,13 @@
       status('<b>Thank you!</b> Your PDF is on its way to ' + j.email + '.', 'ok');
     }).catch(function (err) { status(err.message, 'err'); });
   }
+
+  // Counts clicks on the Amazon gear links in Google Analytics
+  document.querySelectorAll('.gear a.item').forEach(function (a) {
+    a.addEventListener('click', function () {
+      try { gtag('event', 'affiliate_click', { link_text: a.querySelector('h3').textContent, link_url: a.href }); } catch (e) {}
+    });
+  });
 
   if (WEB_APP_URL.indexOf('PASTE_') === 0) {
     status('Store setup: paste your web app address into the WEB_APP_URL line of index.html.', 'err');
