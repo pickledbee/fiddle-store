@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Duet Recorder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Layout: one column of step cards (setup, melody, harmony, listen and save), a fixed recording bar appears at the bottom while recording */
+  :root {
+    --bg:#f6f3ea; --card:#ffffff; --fg:#1d1d1b; --muted:#5f5e58; --line:#e2dccb;
+    --green:#1F3B2D; --green-fg:#F3EBD8; --gold:#b8913f; --mel:#2f6b4f; --har:#9a6a1f;
+    --rec:#b3261e; --rec-bg:#fbe9e7; --ok:#1b5e20; --ok-bg:#e7f3e8; --warn-bg:#fff6e0; --warn-fg:#6d4c00;
+    --wave-bg:#f1ede2; --playhead:#b3261e;
+    --serif:"Libre Baskerville", Georgia, serif; --sans:"Source Sans 3", -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#141a16; --card:#1c241f; --fg:#ece6d6; --muted:#a8a493; --line:#2e3a32;
+    --green:#1F3B2D; --green-fg:#F3EBD8; --gold:#d6b46a; --mel:#6fbf95; --har:#e0a64a;
+    --rec:#ff6b5e; --rec-bg:#3a1d1a; --ok:#9be3a3; --ok-bg:#1d3322; --warn-bg:#3a3018; --warn-fg:#f2d48a;
+    --wave-bg:#232d27; --playhead:#ff6b5e; color-scheme:dark; } }
+  :root[data-theme="dark"] {
+    --bg:#141a16; --card:#1c241f; --fg:#ece6d6; --muted:#a8a493; --line:#2e3a32;
+    --green:#1F3B2D; --green-fg:#F3EBD8; --gold:#d6b46a; --mel:#6fbf95; --har:#e0a64a;
+    --rec:#ff6b5e; --rec-bg:#3a1d1a; --ok:#9be3a3; --ok-bg:#1d3322; --warn-bg:#3a3018; --warn-fg:#f2d48a;
+    --wave-bg:#232d27; --playhead:#ff6b5e; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:17px; line-height:1.55; padding-bottom:env(safe-area-inset-bottom,0px); }
+  .wrap { max-width:820px; margin:0 auto; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); }
+  h1, h2 { font-family:var(--serif); line-height:1.25; text-wrap:balance; margin:0; }
+  .top { background:var(--green); color:var(--green-fg); padding-block:28px 30px; }
+  .top h1 { font-size:32px; margin:4px 0 8px; }
+  .top p { margin:0; max-width:60ch; color:#e3dbc6; }
+  .eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:13px; font-weight:700; color:var(--gold); }
+  main { display:grid; gap:18px; padding-block:20px 120px; }
+  .notice { background:var(--warn-bg); color:var(--warn-fg); border-radius:12px; padding:14px 16px; font-size:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; display:grid; gap:14px; min-width:0; }
+  .card h2 { font-size:21px; }
+  .small { font-size:14px; color:var(--muted); margin:0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px 16px; }
+  label.f { display:grid; gap:4px; font-size:14px; font-weight:600; color:var(--muted); }
+  select, input[type=number] { font:inherit; font-size:17px; padding:9px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); width:100%; }
+  input[type=range] { width:100%; accent-color:var(--green); }
+  .chk { display:flex; gap:8px; align-items:center; font-size:16px; font-weight:400; color:var(--fg); }
+  .chk input { width:20px; height:20px; accent-color:var(--green); }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  button { font:inherit; font-weight:600; font-size:16px; border-radius:10px; padding:10px 16px; cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  button:hover:not(:disabled) { border-color:var(--gold); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid var(--gold); outline-offset:2px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--green); color:var(--green-fg); border-color:var(--green); }
+  button.recbtn { background:var(--rec); color:#fff; border-color:var(--rec); font-size:17px; padding:12px 20px; }
+  button.recbtn::before { content:""; display:inline-block; width:12px; height:12px; border-radius:50%; background:#fff; margin-right:9px; vertical-align:0; }
+  button.danger { color:var(--rec); }
+  .meter { flex:1; min-width:120px; height:12px; background:var(--wave-bg); border-radius:6px; overflow:hidden; }
+  .meter i { display:block; height:100%; width:0; background:var(--mel); transition:width .06s linear; }
+  .meter i.hot { background:var(--rec); }
+  .status { font-size:15px; padding:10px 12px; border-radius:9px; }
+  .status.ok { background:var(--ok-bg); color:var(--ok); }
+  .status.err { background:var(--rec-bg); color:var(--rec); }
+  .status.info { background:var(--wave-bg); color:var(--fg); }
+  .trhead { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .trhead h2 span { font-family:var(--sans); font-size:15px; font-weight:600; color:var(--muted); margin-left:6px; }
+  .pill { font-size:13px; font-weight:700; border-radius:20px; padding:3px 10px; background:var(--wave-bg); color:var(--muted); white-space:nowrap; }
+  .pill.has { background:var(--ok-bg); color:var(--ok); }
+  .wavebox { position:relative; background:var(--wave-bg); border-radius:10px; overflow:hidden; cursor:pointer; }
+  canvas.wave { display:block; width:100%; height:76px; }
+  .wavebox .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--muted); pointer-events:none; }
+  .mix { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 18px; align-items:end; }
+  output { font-variant-numeric:tabular-nums; color:var(--fg); font-weight:600; }
+  .time { font-variant-numeric:tabular-nums; font-size:15px; color:var(--muted); }
+  .recbar { position:fixed; left:0; right:0; bottom:0; z-index:20; background:var(--rec); color:#fff; padding-bottom:env(safe-area-inset-bottom,0px); box-shadow:0 -6px 24px rgba(0,0,0,.25); }
+  .recbar .wrap { display:flex; align-items:center; gap:16px; padding-block:14px; flex-wrap:wrap; }
+  .recbar .big { font-family:var(--serif); font-size:30px; font-weight:700; min-width:3ch; font-variant-numeric:tabular-nums; }
+  .recbar .what { flex:1; min-width:160px; }
+  .recbar .what b { display:block; font-size:18px; }
+  .recbar .what span { font-size:14px; opacity:.9; }
+  .recbar button { background:#fff; color:var(--rec); border-color:#fff; font-size:18px; padding:12px 26px; }
+  .recbar .meter { flex:0 1 160px; background:rgba(255,255,255,.25); }
+  .recbar .meter i { background:#fff; }
+  details summary { cursor:pointer; font-weight:600; font-size:15px; }
+  details p { margin:8px 0 0; font-size:15px; color:var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .meter i { transition:none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow">Two violins, one player</div>
+    <h1>Duet Recorder</h1>
+    <p>Record the melody. Then record the harmony while the melody plays back in your headphones. The page lines up both parts and mixes them into one file.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="notice"><b>Wear wired headphones while you record.</b> If the playback comes out of a speaker, the microphone records it too. Bluetooth headphones add a delay, so wired ones line up best.</div>
+
+  <section class="card" id="setup">
+    <h2>1. Setup</h2>
+    <div class="grid">
+      <label class="f" for="bpm">Tempo (beats per minute)<input type="number" id="bpm" min="40" max="240" step="1" value="100"></label>
+      <label class="f" for="meter">Beats per bar
+        <select id="meter"><option value="2">2 (2/4 time)</option><option value="3">3 (3/4 time)</option><option value="4" selected>4 (4/4 time)</option></select></label>
+      <label class="f" for="countin">Count-in
+        <select id="countin"><option value="0">None</option><option value="1" selected>1 bar</option><option value="2">2 bars</option></select></label>
+      <label class="f" for="clickVol">Click volume<input type="range" id="clickVol" min="0" max="1" step="0.05" value="0.6"></label>
+    </div>
+    <label class="chk" for="clickRec"><input type="checkbox" id="clickRec" checked> Keep clicking while I record (heard only in your headphones)</label>
+    <p class="small" id="lockMsg" hidden>Tempo, beats per bar, and count-in are locked because a part is recorded. Delete both parts to change them.</p>
+
+    <div class="row">
+      <button class="primary" id="micBtn">Turn on microphone</button>
+      <div class="meter" aria-label="Microphone level"><i id="micLevel"></i></div>
+    </div>
+    <div id="micStatus" class="status info" hidden></div>
+
+    <div class="row">
+      <div style="flex:1;min-width:200px">Recording delay: <output id="latVal">not measured</output> <span class="small" id="latSrc"></span></div>
+      <button id="calBtn">Measure delay</button>
+    </div>
+    <details>
+      <summary>What is the recording delay?</summary>
+      <p>Every phone and computer takes a few milliseconds to play sound and to hear it. The page subtracts that delay so the harmony lands exactly on the melody. To measure it, unplug your headphones, turn the volume up, stay quiet, and tap Measure delay. You will hear eight clicks. Measure once per device. If the parts still sound a little early or late, use the Line up slider on the harmony.</p>
+    </details>
+    <div id="calStatus" class="status info" hidden></div>
+  </section>
+
+  <section class="card track" id="card-melody">
+    <div class="trhead">
+      <div><div class="eyebrow">2. Part one</div><h2>Melody <span>Violin 1</span></h2></div>
+      <div class="pill" id="pill-melody">Not recorded</div>
+    </div>
+    <div class="wavebox" id="box-melody"><canvas class="wave" id="wave-melody"></canvas><div class="empty" id="empty-melody">Tap Record melody, wait for the count-in, then play.</div></div>
+    <div class="row">
+      <button class="recbtn" id="rec-melody">Record melody</button>
+      <button id="undo-melody" hidden>Undo last take</button>
+      <button class="danger" id="del-melody" hidden>Delete</button>
+    </div>
+    <div class="mix">
+      <label class="f" for="vol-melody">Volume <input type="range" id="vol-melody" min="0" max="1.5" step="0.05" value="1"></label>
+      <label class="f" for="pan-melody">Left / right <input type="range" id="pan-melody" min="-1" max="1" step="0.05" value="-0.35"></label>
+      <label class="chk" for="mute-melody"><input type="checkbox" id="mute-melody"> Mute</label>
+    </div>
+  </section>
+
+  <section class="card track" id="card-harmony">
+    <div class="trhead">
+      <div><div class="eyebrow">3. Part two</div><h2>Harmony <span>Violin 2</span></h2></div>
+      <div class="pill" id="pill-harmony">Not recorded</div>
+    </div>
+    <div class="wavebox" id="box-harmony"><canvas class="wave" id="wave-harmony"></canvas><div class="empty" id="empty-harmony">Record the melody first. Then the melody plays while you record this part.</div></div>
+    <div class="row">
+      <button class="recbtn" id="rec-harmony">Record harmony</button>
+      <button id="undo-harmony" hidden>Undo last take</button>
+      <button class="danger" id="del-harmony" hidden>Delete</button>
+    </div>
+    <div class="mix">
+      <label class="f" for="vol-harmony">Volume <input type="range" id="vol-harmony" min="0" max="1.5" step="0.05" value="0.85"></label>
+      <label class="f" for="pan-harmony">Left / right <input type="range" id="pan-harmony" min="-1" max="1" step="0.05" value="0.35"></label>
+      <label class="chk" for="mute-harmony"><input type="checkbox" id="mute-harmony"> Mute</label>
+    </div>
+    <label class="f" for="nudge">Line up: move the harmony earlier or later <output id="nudgeVal">0 ms</output>
+      <input type="range" id="nudge" min="-200" max="200" step="5" value="0"></label>
+    <label class="f" for="guideVol">How loud the melody plays while you record the harmony <input type="range" id="guideVol" min="0.1" max="1.5" step="0.05" value="1"></label>
+  </section>
+
+  <section class="card" id="mixcard">
+    <h2>4. Listen and save</h2>
+    <div class="row">
+      <button class="primary" id="playBtn" disabled>Play both parts</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <span class="time" id="timeVal">0:00 / 0:00</span>
+    </div>
+    <p class="small">Tap a waveform to start playback from that spot.</p>
+    <div class="row">
+      <label class="chk" for="trim"><input type="checkbox" id="trim" checked> Cut the silence at the start and end</label>
+      <label class="chk" for="norm"><input type="checkbox" id="norm" checked> Make it full volume</label>
+    </div>
+    <div class="row">
+      <button class="primary" id="mp3Btn" disabled>Save duet as MP3</button>
+      <button id="wavBtn" disabled>Save duet as WAV</button>
+      <button id="melWav" disabled>Save melody only</button>
+      <button id="harWav" disabled>Save harmony only</button>
+    </div>
+    <div id="saveStatus" class="status info" hidden></div>
+    <p class="small">Muted parts are left out of the saved duet. Your recordings stay on this device and are never uploaded. This browser keeps your last session until you delete the parts.</p>
+  </section>
+</main>
+
+<div class="recbar" id="recbar" hidden>
+  <div class="wrap">
+    <div class="big" id="recBig">4</div>
+    <div class="what"><b id="recWhat">Recording melody</b><span id="recSub">Get ready</span></div>
+    <div class="meter"><i id="recLevel"></i></div>
+    <button id="recStop">Stop</button>
+  </div>
+</div>
+
+<script src="lame.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var NAMES = ['melody', 'harmony'];
+  var LABEL = { melody: 'melody', harmony: 'harmony' };
+
+  var S = { bpm: 100, meter: 4, countBars: 1, clickRec: true, clickVol: 0.6, guideVol: 1, latencyMs: null, trim: true, norm: true };
+  var T = {
+    melody:  { buf: null, prev: null, prevOff: 0, vol: 1,    pan: -0.35, mute: false, off: 0 },
+    harmony: { buf: null, prev: null, prevOff: 0, vol: 0.85, pan: 0.35,  mute: false, off: 0 }
+  };
+
+  var ctx = null, stream = null, micSrc = null, analyser = null, capNode = null, useWorklet = false;
+  var chunks = [], capturing = false;
+  var recState = null, play = null, seekTl = 0, busy = false, wakeLock = null;
+
+  // ---------- audio setup ----------
+  function ensureCtx() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC({ latencyHint: 'interactive' });
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  var WORKLET = "class Cap extends AudioWorkletProcessor{constructor(){super();this.on=false;this.b=new Float32Array(4096);this.n=0;this.f=0;" +
+    "this.port.onmessage=e=>{if(e.data===false&&this.n>0){this.port.postMessage({f:this.f,d:this.b.slice(0,this.n)});}this.on=e.data;this.n=0;};}" +
+    "process(inp){const c=inp[0]&&inp[0][0];if(!this.on||!c)return true;if(this.n===0)this.f=currentFrame;this.b.set(c,this.n);this.n+=c.length;" +
+    "if(this.n+128>this.b.length){this.port.postMessage({f:this.f,d:this.b.slice(0,this.n)});this.n=0;}return true;}}registerProcessor('cap',Cap);";
+
+  function ensureMic() {
+    ensureCtx();
+    if (stream) return Promise.resolve();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.reject(new Error('This browser cannot use the microphone here. Open the page in Chrome, Safari, Edge, or Firefox.'));
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } })
+      .then(function (s) {
+        stream = s;
+        micSrc = ctx.createMediaStreamSource(stream);
+        analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
+        micSrc.connect(analyser);
+        var sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+        var setupFallback = function () {
+          useWorklet = false;
+          capNode = ctx.createScriptProcessor(2048, 1, 1);
+          capNode.onaudioprocess = function (e) {
+            if (!capturing) return;
+            var d = new Float32Array(e.inputBuffer.getChannelData(0));
+            var f = Math.round((e.playbackTime || ctx.currentTime) * ctx.sampleRate) - 2 * 2048;
+            chunks.push({ f: f, d: d });
+          };
+          micSrc.connect(capNode); capNode.connect(sink);
+        };
+        if (ctx.audioWorklet && window.AudioWorkletNode) {
+          var url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+          return ctx.audioWorklet.addModule(url).then(function () {
+            capNode = new AudioWorkletNode(ctx, 'cap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
+            capNode.port.onmessage = function (e) { chunks.push(e.data); };
+            micSrc.connect(capNode); capNode.connect(sink);
+            useWorklet = true;
+          }).catch(setupFallback);
+        }
+        setupFallback();
+      })
+      .then(function () {
+        var tr = stream.getAudioTracks()[0];
+        micMsg('Microphone on' + (tr && tr.label ? ': ' + tr.label : '') + '. Play a few notes and watch the level bar. Keep it out of the red.', 'ok');
+        $('micBtn').textContent = 'Microphone on';
+        $('micBtn').disabled = true;
+        showLatency();
+        meterLoop();
+      })
+      .catch(function (err) {
+        stream = null;
+        var m = (err && err.name === 'NotAllowedError')
+          ? 'The microphone is blocked. Allow microphone access for this site in your browser settings, then reload the page.'
+          : (err && err.message) || 'The microphone could not start.';
+        micMsg(m, 'err');
+        throw err;
+      });
+  }
+
+  function startCapture() {
+    chunks = []; capturing = true;
+    if (useWorklet) capNode.port.postMessage(true);
+  }
+  function stopCapture() {
+    if (useWorklet) capNode.port.postMessage(false);
+    return new Promise(function (res) { setTimeout(function () { capturing = false; res(chunks.slice()); }, 250); });
+  }
+  function extract(list, s, e) {
+    var n = Math.max(0, e - s), out = new Float32Array(n);
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i], a = Math.max(s, c.f), b = Math.min(e, c.f + c.d.length);
+      if (b > a) out.set(c.d.subarray(a - c.f, b - c.f), a - s);
+    }
+    return out;
+  }
+
+  function latencySec() {
+    if (S.latencyMs != null) return S.latencyMs / 1000;
+    return estimateLatency();
+  }
+  function estimateLatency() {
+    if (!ctx) return 0.05;
+    var out = ctx.outputLatency || ((ctx.baseLatency || 0) + 0.012);
+    var inp = 0.012;
+    try { var st = stream && stream.getAudioTracks()[0].getSettings(); if (st && st.latency) inp = st.latency; } catch (e) {}
+    return out + inp;
+  }
+  function showLatency() {
+    if (S.latencyMs != null) { $('latVal').textContent = S.latencyMs + ' ms'; $('latSrc').textContent = '(measured on this device)'; }
+    else if (ctx && stream) { $('latVal').textContent = Math.round(estimateLatency() * 1000) + ' ms'; $('latSrc').textContent = '(estimated, measure for best results)'; }
+  }
+
+  // ---------- sounds ----------
+  function click(t, accent, vol) {
+    if (vol <= 0) return;
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = accent ? 1760 : 1175;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * (accent ? 0.9 : 0.6), t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.08);
+  }
+  function blip(t) {
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.value = 2000;
+    g.gain.setValueAtTime(0, t - 0.001); g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    o.connect(g); g.connect(ctx.destination); o.start(t - 0.002); o.stop(t + 0.04);
+  }
+
+  function addTrack(c, tr, dest, when, startTl, mult) {
+    var src = c.createBufferSource(); src.buffer = tr.buf;
+    var g = c.createGain(); g.gain.value = tr.vol * (mult || 1);
+    src.connect(g);
+    var node = g;
+    if (c.createStereoPanner) { var p = c.createStereoPanner(); p.pan.value = tr.pan; g.connect(p); node = p; }
+    node.connect(dest);
+    var off = tr.off / 1000, delay = Math.max(0, off - startTl), skip = Math.max(0, startTl - off);
+    if (skip < tr.buf.duration) src.start(when + delay, skip); else return null;
+    return src;
+  }
+  function totalLen() {
+    var L = 0;
+    NAMES.forEach(function (n) { var t = T[n]; if (t.buf) L = Math.max(L, t.off / 1000 + t.buf.duration); });
+    return Math.max(0, L);
+  }
+
+  // ---------- recording ----------
+  function record(name) {
+    if (recState || busy) return;
+    stopPlay();
+    ensureMic().then(function () {
+      var other = name === 'melody' ? 'harmony' : 'melody';
+      var guide = T[other].buf && !T[other].mute ? T[other] : null;
+      var spb = 60 / S.bpm, countBeats = S.countBars * S.meter;
+      var t0 = ctx.currentTime + 0.4;
+      startCapture();
+      var srcs = [];
+      if (guide) { var s = addTrack(ctx, guide, ctx.destination, t0, 0, S.guideVol); if (s) srcs.push(s); }
+      var beat = 0, timer;
+      var tick = function () {
+        while (t0 + beat * spb < ctx.currentTime + 0.15) {
+          var t = t0 + beat * spb;
+          if (beat < countBeats || S.clickRec) click(t, beat % S.meter === 0, S.clickVol);
+          if (beat < countBeats) showCount(t, countBeats - beat);
+          beat++;
+          if (beat >= countBeats && !S.clickRec) { clearInterval(timer); return; }
+        }
+      };
+      tick(); timer = setInterval(tick, 25);
+      var guideEnd = guide ? t0 + guide.off / 1000 + guide.buf.duration : null;
+      recState = { name: name, t0: t0, lat: latencySec(), timer: timer, srcs: srcs, guideEnd: guideEnd, countEnd: t0 + countBeats * spb };
+      $('recWhat').textContent = 'Recording ' + LABEL[name];
+      $('recSub').textContent = countBeats ? 'Count-in. Start playing after the clicks.' : 'Recording. Start playing.';
+      $('recBig').textContent = countBeats ? String(countBeats) : '0:00';
+      $('recbar').hidden = false;
+      setBusyUI();
+      try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; }).catch(function () {}); } catch (e) {}
+      recClock();
+    }).catch(function () {});
+  }
+  function showCount(t, n) {
+    setTimeout(function () { if (recState) $('recBig').textContent = String(n); }, Math.max(0, (t - ctx.currentTime) * 1000));
+  }
+  function recClock() {
+    if (!recState) return;
+    var now = ctx.currentTime, r = recState;
+    if (now >= r.countEnd) {
+      var el = now - r.countEnd;
+      $('recBig').textContent = fmt(el);
+      $('recSub').textContent = r.guideEnd ? 'Stops by itself after the ' + (r.name === 'melody' ? 'harmony' : 'melody') + ' ends, or tap Stop.' : 'Tap Stop (or press the space bar) when you finish.';
+    }
+    if (r.guideEnd && now > r.guideEnd + 1.2) { stopRecord(); return; }
+    if (now - r.t0 > 600) { stopRecord(); return; }
+    requestAnimationFrame(recClock);
+  }
+  function stopRecord() {
+    if (!recState || busy) return;
+    var r = recState; busy = true;
+    clearInterval(r.timer);
+    r.srcs.forEach(function (s) { try { s.stop(); } catch (e) {} });
+    var endT = ctx.currentTime;
+    $('recSub').textContent = 'Saving the take...';
+    stopCapture().then(function (list) {
+      var sr = ctx.sampleRate;
+      var s = Math.round((r.t0 + r.lat) * sr), e = Math.round((endT + r.lat) * sr);
+      var data = extract(list, s, e);
+      recState = null; busy = false;
+      $('recbar').hidden = true;
+      if (wakeLock) { try { wakeLock.release(); } catch (x) {} wakeLock = null; }
+      if (data.length < sr * 0.75) { micMsg('That take was too short, so it was not kept.', 'err'); setBusyUI(); return; }
+      var buf = new AudioBuffer({ length: data.length, numberOfChannels: 1, sampleRate: sr });
+      buf.copyToChannel(data, 0);
+      var t = T[r.name];
+      t.prev = t.buf; t.prevOff = t.off; t.buf = buf;
+      if (r.name === 'harmony') { t.off = 0; $('nudge').value = 0; $('nudgeVal').textContent = '0 ms'; }
+      var peak = 0; for (var i = 0; i < data.length; i += 4) { var a = Math.abs(data[i]); if (a > peak) peak = a; }
+      if (peak > 0.985) micMsg('Saved, but parts of that take were too loud and may sound distorted. Move the microphone farther away and record again.', 'err');
+      else if (peak < 0.03) micMsg('Saved, but the take is very quiet. Check that the right microphone is on.', 'err');
+      else micMsg(cap(LABEL[r.name]) + ' saved. ' + (T.melody.buf && T.harmony.buf ? 'Tap Play both parts to hear the duet.' : r.name === 'melody' ? 'Now record the harmony.' : 'Now record the melody.'), 'ok');
+      seekTl = 0;
+      persist(); render();
+    });
+  }
+
+  // ---------- calibration ----------
+  function calibrate() {
+    if (recState || busy) return;
+    stopPlay();
+    ensureMic().then(function () {
+      busy = true; setBusyUI();
+      calMsg('Listening for eight clicks. Stay quiet...', 'info');
+      var sr = ctx.sampleRate, n = 8, gap = 0.45, t0 = ctx.currentTime + 0.5;
+      startCapture();
+      for (var k = 0; k < n; k++) blip(t0 + k * gap);
+      setTimeout(function () {
+        stopCapture().then(function (list) {
+          busy = false;
+          var pre = 0.3, base = Math.round((t0 - pre) * sr);
+          var data = extract(list, base, Math.round((t0 + n * gap + 0.4) * sr));
+          var nz = 0, nn = Math.round(0.25 * sr);
+          for (var i = 0; i < nn; i++) nz += data[i] * data[i];
+          nz = Math.sqrt(nz / nn);
+          var delays = [];
+          for (var k2 = 0; k2 < n; k2++) {
+            var ws = Math.round((pre + k2 * gap) * sr), we = Math.min(data.length, ws + Math.round(0.4 * sr)), pk = 0;
+            for (var j = ws; j < we; j++) { var a = Math.abs(data[j]); if (a > pk) pk = a; }
+            if (pk < Math.max(nz * 8, 0.01)) continue;
+            var thr = pk * 0.3;
+            for (j = ws; j < we; j++) { if (Math.abs(data[j]) > thr) { delays.push((j - ws) / sr); break; } }
+          }
+          delays.sort(function (a, b) { return a - b; });
+          if (delays.length < 5) { calMsg('The microphone did not hear the clicks clearly. Unplug your headphones, turn the volume up, and try again in a quiet room.', 'err'); setBusyUI(); return; }
+          var q1 = delays[Math.floor(delays.length * 0.25)], q3 = delays[Math.floor(delays.length * 0.75)];
+          if (q3 - q1 > 0.012) { calMsg('The room was too noisy to measure. Try again when it is quiet.', 'err'); setBusyUI(); return; }
+          var med = delays[Math.floor(delays.length / 2)];
+          S.latencyMs = Math.round(med * 1000);
+          showLatency(); persist(); setBusyUI();
+          calMsg('Measured ' + S.latencyMs + ' ms. Plug your headphones back in before you record.', 'ok');
+        });
+      }, (0.5 + n * gap + 0.6) * 1000);
+    }).catch(function () {});
+  }
+
+  // ---------- playback ----------
+  function playAll(fromTl) {
+    if (recState || busy) return;
+    stopPlay();
+    ensureCtx();
+    var len = totalLen(); if (!len) return;
+    var startTl = Math.min(fromTl || 0, len - 0.05);
+    var when = ctx.currentTime + 0.06, srcs = [];
+    NAMES.forEach(function (n) { if (T[n].buf && !T[n].mute) { var s = addTrack(ctx, T[n], ctx.destination, when, startTl, 1); if (s) srcs.push(s); } });
+    play = { srcs: srcs, when: when, startTl: startTl, len: len };
+    $('stopBtn').disabled = false;
+    $('playBtn').textContent = 'Playing...';
+    playLoop();
+  }
+  function stopPlay() {
+    if (!play) return;
+    play.srcs.forEach(function (s) { try { s.stop(); } catch (e) {} });
+    play = null;
+    $('stopBtn').disabled = true;
+    $('playBtn').textContent = 'Play both parts';
+    drawAll();
+  }
+  function playPos() { return play ? Math.max(0, play.startTl + (ctx.currentTime - play.when)) : seekTl; }
+  function playLoop() {
+    if (!play) return;
+    var p = playPos();
+    if (p >= play.len) { seekTl = 0; stopPlay(); updateTime(); return; }
+    drawAll(); updateTime();
+    requestAnimationFrame(playLoop);
+  }
+  function updateTime() { $('timeVal').textContent = fmt(playPos()) + ' / ' + fmt(totalLen()); }
+
+  // ---------- waveforms ----------
+  var peaksCache = {};
+  function drawWave(name) {
+    var cv = $('wave-' + name), box = $('box-' + name);
+    var dpr = window.devicePixelRatio || 1, w = Math.max(1, Math.round(box.clientWidth * dpr)), h = Math.round(76 * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    var g = cv.getContext('2d'); g.clearRect(0, 0, w, h);
+    var t = T[name], len = totalLen();
+    $('empty-' + name).hidden = !!t.buf;
+    if (!t.buf || !len) return;
+    var css = getComputedStyle(document.documentElement);
+    var key = name + w + t.buf.length;
+    var pk = peaksCache[name];
+    if (!pk || pk.key !== key) {
+      var d = t.buf.getChannelData(0), cols = w, per = d.length / (t.buf.duration / len * cols), arr = new Float32Array(cols);
+      var startCol = 0, colsUsed = Math.ceil(t.buf.duration / len * cols);
+      for (var c = 0; c < colsUsed && c < cols; c++) {
+        var a = Math.floor(c * per), b = Math.min(d.length, Math.floor((c + 1) * per)), m = 0;
+        for (var i = a; i < b; i++) { var v = Math.abs(d[i]); if (v > m) m = v; }
+        arr[c] = m;
+      }
+      pk = peaksCache[name] = { key: key, arr: arr, colsUsed: colsUsed };
+    }
+    var x0 = Math.round(t.off / 1000 / len * w);
+    g.fillStyle = t.mute ? css.getPropertyValue('--muted').trim() : css.getPropertyValue(name === 'melody' ? '--mel' : '--har').trim();
+    var mid = h / 2;
+    for (var c2 = 0; c2 < pk.colsUsed; c2++) {
+      var amp = Math.max(1, Math.min(1, pk.arr[c2] * 1.4) * (h / 2 - 3));
+      g.fillRect(x0 + c2, mid - amp, 1, amp * 2);
+    }
+    var pos = playPos();
+    if (play || pos > 0) {
+      g.fillStyle = css.getPropertyValue('--playhead').trim();
+      g.fillRect(Math.round(pos / len * w), 0, Math.max(2, dpr * 2), h);
+    }
+  }
+  function drawAll() { NAMES.forEach(drawWave); }
+
+  // ---------- export ----------
+  function renderMix(names) {
+    var len = 0, sr = 48000;
+    names.forEach(function (n) { var t = T[n]; if (t.buf) { len = Math.max(len, t.off / 1000 + t.buf.duration); sr = t.buf.sampleRate; } });
+    var oc = new OfflineAudioContext(2, Math.ceil((len + 0.1) * sr), sr);
+    names.forEach(function (n) { if (T[n].buf) addTrack(oc, T[n], oc.destination, 0, 0, 1); });
+    return oc.startRendering().then(function (out) {
+      var L = out.getChannelData(0), R = out.getChannelData(1), N = L.length, peak = 0, i;
+      for (i = 0; i < N; i++) { var a = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (a > peak) peak = a; }
+      var s = 0, e = N;
+      if (S.trim && peak > 0) {
+        var thr = peak * 0.04;
+        while (s < N && Math.abs(L[s]) < thr && Math.abs(R[s]) < thr) s++;
+        while (e > s && Math.abs(L[e - 1]) < thr * 0.5 && Math.abs(R[e - 1]) < thr * 0.5) e--;
+        s = Math.max(0, s - Math.round(0.2 * sr)); e = Math.min(N, e + Math.round(1.0 * sr));
+      }
+      L = L.slice(s, e); R = R.slice(s, e);
+      var gain = (S.norm && peak > 0) ? 0.89 / peak : 1;
+      var fade = Math.min(L.length, Math.round(0.6 * sr)), fin = Math.min(L.length, Math.round(0.01 * sr));
+      for (i = 0; i < L.length; i++) {
+        var f = 1;
+        if (S.trim && i > L.length - fade) f = (L.length - i) / fade;
+        if (i < fin) f *= i / fin;
+        L[i] = Math.max(-1, Math.min(1, L[i] * gain * f)); R[i] = Math.max(-1, Math.min(1, R[i] * gain * f));
+      }
+      return { L: L, R: R, sr: sr };
+    });
+  }
+  function toWav(m) {
+    var n = m.L.length, buf = new ArrayBuffer(44 + n * 4), v = new DataView(buf), p = 0;
+    function str(s) { for (var i = 0; i < s.length; i++) v.setUint8(p++, s.charCodeAt(i)); }
+    function u32(x) { v.setUint32(p, x, true); p += 4; } function u16(x) { v.setUint16(p, x, true); p += 2; }
+    str('RIFF'); u32(36 + n * 4); str('WAVE'); str('fmt '); u32(16); u16(1); u16(2); u32(m.sr); u32(m.sr * 4); u16(4); u16(16); str('data'); u32(n * 4);
+    for (var i = 0; i < n; i++) { v.setInt16(p, m.L[i] * 32767, true); p += 2; v.setInt16(p, m.R[i] * 32767, true); p += 2; }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+  function toMp3(m) {
+    return new Promise(function (res, rej) {
+      if (!window.lamejs) { rej(new Error('The MP3 maker did not load. Save as WAV instead, or reload the page.')); return; }
+      var enc = new lamejs.Mp3Encoder(2, m.sr, 192), n = m.L.length, block = 1152 * 40, out = [], i = 0;
+      var conv = function (a, s, e) { var r = new Int16Array(e - s); for (var k = s; k < e; k++) r[k - s] = a[k] < 0 ? a[k] * 32768 : a[k] * 32767; return r; };
+      var step = function () {
+        try {
+          var stop = Math.min(n, i + block * 10);
+          for (; i < stop; i += 1152) {
+            var e = Math.min(n, i + 1152);
+            var b = enc.encodeBuffer(conv(m.L, i, e), conv(m.R, i, e));
+            if (b.length) out.push(new Uint8Array(b));
+          }
+          saveMsg('Making the MP3... ' + Math.round(i / n * 100) + '%', 'info');
+          if (i < n) { setTimeout(step, 0); return; }
+          var f = enc.flush(); if (f.length) out.push(new Uint8Array(f));
+          res(new Blob(out, { type: 'audio/mpeg' }));
+        } catch (err) { rej(err); }
+      };
+      step();
+    });
+  }
+  function download(blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 60000);
+  }
+  function stamp() { var d = new Date(), z = function (x) { return (x < 10 ? '0' : '') + x; }; return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()); }
+  function doSave(kind, names) {
+    if (busy || recState) return;
+    stopPlay();
+    var list = names.filter(function (n) { return T[n].buf && (names.length === 1 || !T[n].mute); });
+    if (!list.length) { saveMsg('There is nothing to save. Unmute a part first.', 'err'); return; }
+    busy = true; setBusyUI(); saveMsg('Mixing...', 'info');
+    var label = names.length === 1 ? names[0] : 'duet';
+    renderMix(list).then(function (m) {
+      if (kind === 'mp3') return toMp3(m).then(function (b) { download(b, label + '-' + stamp() + '.mp3'); });
+      download(toWav(m), label + '-' + stamp() + '.wav');
+    }).then(function () {
+      saveMsg('Saved. Look in your Downloads folder (on iPhone, in the Files app under Downloads).', 'ok');
+    }).catch(function (err) {
+      saveMsg((err && err.message) || 'Saving did not work. Try Save duet as WAV.', 'err');
+    }).then(function () { busy = false; setBusyUI(); });
+  }
+
+  // ---------- saved session (this browser only) ----------
+  var DB = null;
+  function idb() {
+    if (DB) return Promise.resolve(DB);
+    return new Promise(function (res, rej) {
+      try {
+        var r = indexedDB.open('duet-recorder', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+        r.onsuccess = function () { DB = r.result; res(DB); };
+        r.onerror = function () { rej(r.error); };
+      } catch (e) { rej(e); }
+    });
+  }
+  var persistTimer = null;
+  function persist() {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(function () {
+      var snap = { S: S, T: {} };
+      NAMES.forEach(function (n) {
+        var t = T[n];
+        snap.T[n] = { vol: t.vol, pan: t.pan, mute: t.mute, off: t.off,
+          sr: t.buf ? t.buf.sampleRate : 0, data: t.buf ? t.buf.getChannelData(0).slice() : null };
+      });
+      idb().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').put(snap, 'session'); }).catch(function () {});
+    }, 300);
+  }
+  function restore() {
+    return idb().then(function (db) {
+      return new Promise(function (res) {
+        var q = db.transaction('kv').objectStore('kv').get('session');
+        q.onsuccess = function () { res(q.result); }; q.onerror = function () { res(null); };
+      });
+    }).then(function (snap) {
+      if (!snap) return;
+      Object.keys(S).forEach(function (k) { if (snap.S && snap.S[k] !== undefined) S[k] = snap.S[k]; });
+      NAMES.forEach(function (n) {
+        var s = snap.T && snap.T[n]; if (!s) return;
+        var t = T[n]; t.vol = s.vol; t.pan = s.pan; t.mute = s.mute; t.off = s.off || 0;
+        if (s.data && s.data.length) { t.buf = new AudioBuffer({ length: s.data.length, numberOfChannels: 1, sampleRate: s.sr }); t.buf.copyToChannel(s.data, 0); }
+      });
+    }).catch(function () {});
+  }
+
+  // ---------- UI ----------
+  function fmt(s) { s = Math.max(0, s); var m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ':' + (x < 10 ? '0' : '') + x; }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function msg(id, text, kind) { var el = $(id); el.hidden = !text; el.className = 'status ' + (kind || 'info'); el.textContent = text || ''; }
+  function micMsg(t, k) { msg('micStatus', t, k); }
+  function calMsg(t, k) { msg('calStatus', t, k); }
+  function saveMsg(t, k) { msg('saveStatus', t, k); }
+
+  function syncControls() {
+    $('bpm').value = S.bpm; $('meter').value = S.meter; $('countin').value = S.countBars;
+    $('clickRec').checked = S.clickRec; $('clickVol').value = S.clickVol; $('guideVol').value = S.guideVol;
+    $('trim').checked = S.trim; $('norm').checked = S.norm;
+    NAMES.forEach(function (n) { $('vol-' + n).value = T[n].vol; $('pan-' + n).value = T[n].pan; $('mute-' + n).checked = T[n].mute; });
+    $('nudge').value = T.harmony.off; $('nudgeVal').textContent = (T.harmony.off > 0 ? '+' : '') + T.harmony.off + ' ms';
+  }
+  function setBusyUI() {
+    var lock = busy || !!recState, any = !!(T.melody.buf || T.harmony.buf), both = !!(T.melody.buf && T.harmony.buf);
+    NAMES.forEach(function (n) {
+      var t = T[n];
+      $('rec-' + n).disabled = lock;
+      $('rec-' + n).textContent = (t.buf ? 'Record ' + LABEL[n] + ' again' : 'Record ' + LABEL[n]);
+      $('undo-' + n).hidden = !t.prev; $('undo-' + n).disabled = lock;
+      $('del-' + n).hidden = !t.buf; $('del-' + n).disabled = lock;
+      $('pill-' + n).textContent = t.buf ? fmt(t.buf.duration) + ' recorded' : 'Not recorded';
+      $('pill-' + n).className = 'pill' + (t.buf ? ' has' : '');
+    });
+    ['bpm', 'meter', 'countin'].forEach(function (id) { $(id).disabled = any || lock; });
+    $('lockMsg').hidden = !any;
+    $('calBtn').disabled = lock;
+    $('playBtn').disabled = lock || !any;
+    $('mp3Btn').disabled = lock || !any; $('wavBtn').disabled = lock || !any;
+    $('melWav').disabled = lock || !T.melody.buf; $('harWav').disabled = lock || !T.harmony.buf;
+    $('nudge').disabled = lock || !both;
+    $('empty-harmony').textContent = T.melody.buf ? 'Tap Record harmony. The melody plays in your headphones while you record.' : 'Record the melody first. Then the melody plays while you record this part.';
+  }
+  function render() { setBusyUI(); drawAll(); updateTime(); }
+
+  function bind() {
+    $('micBtn').onclick = function () { ensureMic().catch(function () {}); };
+    $('calBtn').onclick = calibrate;
+    $('bpm').onchange = function () { var v = Math.round(+this.value); S.bpm = Math.min(240, Math.max(40, v || 100)); this.value = S.bpm; persist(); };
+    $('meter').onchange = function () { S.meter = +this.value; persist(); };
+    $('countin').onchange = function () { S.countBars = +this.value; persist(); };
+    $('clickRec').onchange = function () { S.clickRec = this.checked; persist(); };
+    $('clickVol').oninput = function () { S.clickVol = +this.value; persist(); };
+    $('guideVol').oninput = function () { S.guideVol = +this.value; persist(); };
+    $('trim').onchange = function () { S.trim = this.checked; persist(); };
+    $('norm').onchange = function () { S.norm = this.checked; persist(); };
+    $('nudge').oninput = function () {
+      T.harmony.off = +this.value; $('nudgeVal').textContent = (T.harmony.off > 0 ? '+' : '') + T.harmony.off + ' ms';
+      peaksCache.harmony = null; drawAll(); persist();
+    };
+    $('nudge').onchange = function () { if (play) playAll(Math.max(0, playPos() - 2)); };
+    NAMES.forEach(function (n) {
+      $('rec-' + n).onclick = function () { record(n); };
+      $('vol-' + n).oninput = function () { T[n].vol = +this.value; persist(); };
+      $('pan-' + n).oninput = function () { T[n].pan = +this.value; persist(); };
+      $('mute-' + n).onchange = function () { T[n].mute = this.checked; drawAll(); persist(); if (play) playAll(playPos()); };
+      $('undo-' + n).onclick = function () {
+        var t = T[n], b = t.buf, o = t.off; t.buf = t.prev; t.off = t.prevOff; t.prev = null;
+        if (!t.buf) { t.buf = b; t.off = o; }
+        syncControls(); persist(); render(); micMsg('Went back to the previous ' + LABEL[n] + ' take.', 'ok');
+      };
+      var armed = null;
+      $('del-' + n).onclick = function () {
+        var btn = this;
+        if (!armed) { btn.textContent = 'Tap again to delete'; armed = setTimeout(function () { armed = null; btn.textContent = 'Delete'; }, 3000); return; }
+        clearTimeout(armed); armed = null; btn.textContent = 'Delete';
+        stopPlay(); T[n].prev = T[n].buf; T[n].prevOff = T[n].off; T[n].buf = null; T[n].off = 0;
+        if (n === 'harmony') { $('nudge').value = 0; $('nudgeVal').textContent = '0 ms'; }
+        seekTl = 0; persist(); render(); micMsg(cap(LABEL[n]) + ' deleted. Tap Undo last take to bring it back.', 'info');
+      };
+      $('box-' + n).onclick = function (e) {
+        var len = totalLen(); if (!len || recState) return;
+        var r = this.getBoundingClientRect();
+        seekTl = Math.max(0, Math.min(len, (e.clientX - r.left) / r.width * len));
+        playAll(seekTl);
+      };
+    });
+    $('playBtn').onclick = function () { playAll(seekTl); };
+    $('stopBtn').onclick = function () { seekTl = playPos(); stopPlay(); updateTime(); };
+    $('recStop').onclick = stopRecord;
+    $('mp3Btn').onclick = function () { doSave('mp3', NAMES); };
+    $('wavBtn').onclick = function () { doSave('wav', NAMES); };
+    $('melWav').onclick = function () { doSave('wav', ['melody']); };
+    $('harWav').onclick = function () { doSave('wav', ['harmony']); };
+    document.addEventListener('keydown', function (e) {
+      if (e.code === 'Space' && recState && !/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); stopRecord(); }
+    });
+    window.addEventListener('resize', function () { peaksCache = {}; drawAll(); });
+  }
+
+  function meterLoop() {
+    if (!analyser) return;
+    var a = new Float32Array(analyser.fftSize);
+    var loop = function () {
+      analyser.getFloatTimeDomainData(a);
+      var pk = 0; for (var i = 0; i < a.length; i++) { var v = Math.abs(a[i]); if (v > pk) pk = v; }
+      var w = Math.min(100, Math.round(Math.sqrt(pk) * 100)) + '%';
+      $('micLevel').style.width = w; $('micLevel').className = pk > 0.95 ? 'hot' : '';
+      $('recLevel').style.width = w;
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  bind();
+  restore().then(function () {
+    syncControls(); render();
+    if (S.latencyMs != null) showLatency();
+    if (T.melody.buf || T.harmony.buf) micMsg('Your last session is loaded.', 'info');
+  });
+})();
+</script>
+</body>
+</html>
