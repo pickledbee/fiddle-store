@@ -72,6 +72,15 @@
   .previews img { width:100%; display:block; border-radius:4px; }
   .previews figcaption { font-size:15px; color:var(--muted); padding:8px 4px 2px; text-align:center; }
   .alt { background:#f3eee2; }
+  .listen { padding-top:40px; }
+  .listenbox { display:grid; grid-template-columns:1.2fr 1fr; gap:24px; align-items:center; background:#fff; border:1px solid var(--line); border-left:5px solid var(--gold); border-radius:12px; padding:22px 24px; }
+  .listenbox h2 { margin:2px 0 6px; font-size:28px; }
+  .listenbox p { margin:0; color:var(--muted); }
+  .listenbox audio { width:100%; }
+  .eyebrow2 { color:#8a6a2a; text-transform:uppercase; letter-spacing:.12em; font-size:14px; font-weight:600; }
+  .lookh { font-size:22px; margin:36px 0 16px; }
+  .hearlink { color:var(--gold); font-weight:600; text-decoration:none; white-space:nowrap; }
+  @media (max-width:720px) { .listenbox { grid-template-columns:1fr; } }
   .benefit { font-size:21px; color:var(--cream) !important; font-weight:600; margin:0 0 8px !important; }
   .byline { font-size:16px; color:var(--gold) !important; margin:0 0 18px !important; }
   .final { background:var(--green); color:var(--cream); }
@@ -120,7 +129,7 @@
       <p class="benefit">First-position fiddle duets for lessons, group classes, and playing with friends.</p>
       <p class="byline">From Bruce Bowers, a Suzuki violin teacher in northeast Wisconsin with over 20 years of teaching experience.</p>
       <p>Twelve lively hornpipes for two violins: six traditional tunes and six new tunes in the same style, each written out as a full 48-bar arrangement with its own harmony part.</p>
-      <p>Made for teacher and student, two friends, or a whole violin studio. Print as many copies as you need for your own students and ensemble.</p>
+      <p>Made for teacher and student, two friends, or a whole violin studio. Print as many copies as you need for your own students and ensemble. <a class="hearlink" href="#listen">&#9654; Hear Duck Creek Hornpipe</a></p>
       <div class="price">$<span id="price">4.95</span><small>88-page PDF</small></div>
       <div class="buybox">
         <div class="loc" id="locBox">
@@ -150,7 +159,26 @@
   </div>
 </header>
 
-<section>
+<section id="listen" class="listen">
+  <div class="wrap">
+    <div class="listenbox">
+      <div>
+        <div class="eyebrow2">Hear it first</div>
+        <h2>Duck Creek Hornpipe</h2>
+        <p>Both parts from the book, Violin 1 melody and Violin 2 harmony, played by Bruce Bowers. This is one of the Level 1 tunes.</p>
+      </div>
+      <audio controls preload="metadata" src="duck-creek-sample.mp3" id="sample">Your browser cannot play this sample.</audio>
+    </div>
+    <h3 class="lookh">Look inside</h3>
+    <div class="previews">
+      <figure><img src="preview-violin1.jpg" alt="Duck Creek Hornpipe, Violin 1 part, first page" loading="lazy"><figcaption>Duck Creek Hornpipe, Violin 1</figcaption></figure>
+      <figure><img src="preview-violin2.jpg" alt="Duck Creek Hornpipe, Violin 2 part, first page" loading="lazy"><figcaption>Duck Creek Hornpipe, Violin 2</figcaption></figure>
+      <figure><img src="preview-warmups.jpg" alt="Warm-up exercises page" loading="lazy"><figcaption>Warm-ups</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
   <div class="wrap">
     <h2>Real duets from real fiddle tunes</h2>
     <p class="lead">Hornpipes are short, lively, and reward a steady rhythm and a clean bow, which makes them some of the best ensemble music a young violinist can learn.</p>
@@ -165,7 +193,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap">
     <h2>Twelve tunes in three levels</h2>
     <div class="levels">
@@ -175,17 +203,6 @@
         <ul><li>Door County Hornpipe<span class="new">new</span></li><li>His Majesty's Hornpipe</li><li>Clog Dance</li><li>Bay Beach Hornpipe<span class="new">new</span></li></ul></div>
       <div class="level"><h3>Level 3: Sixteenths and Triplets</h3><div class="sub">Running sixteenths, triplets, and wider leaps.</div>
         <ul><li>Empire Hornpipe</li><li>Pulaski Hornpipe<span class="new">new</span></li><li>Tivoli Hornpipe</li><li>American Hornpipe</li></ul></div>
-    </div>
-  </div>
-</section>
-
-<section id="look">
-  <div class="wrap">
-    <h2>Look inside</h2>
-    <div class="previews">
-      <figure><img src="preview-violin1.jpg" alt="Duck Creek Hornpipe, Violin 1 part, first page" loading="lazy"><figcaption>Duck Creek Hornpipe, Violin 1</figcaption></figure>
-      <figure><img src="preview-violin2.jpg" alt="Duck Creek Hornpipe, Violin 2 part, first page" loading="lazy"><figcaption>Duck Creek Hornpipe, Violin 2</figcaption></figure>
-      <figure><img src="preview-warmups.jpg" alt="Warm-up exercises page" loading="lazy"><figcaption>Warm-ups</figcaption></figure>
     </div>
   </div>
 </section>
@@ -424,6 +441,12 @@
       status('<b>Thank you!</b> Your PDF is on its way to ' + j.email + '.', 'ok');
     }).catch(function (err) { status(err.message, 'err'); });
   }
+
+  // Counts plays of the Duck Creek sample in Google Analytics
+  (function () {
+    var a = document.getElementById('sample'), sent = false;
+    if (a) a.addEventListener('play', function () { if (sent) return; sent = true; try { gtag('event', 'sample_play', { tune: 'Duck Creek Hornpipe' }); } catch (e) {} });
+  })();
 
   // Counts clicks on every Amazon affiliate link (gear and books) in Google Analytics
   document.querySelectorAll('a[rel~="sponsored"]').forEach(function (a) {
