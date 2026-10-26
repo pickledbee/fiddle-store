@@ -195,7 +195,7 @@
     <div class="trhead">
       <div><div class="eyebrow">4. Fix and trim</div><h2>Edit a part</h2></div>
       <div class="seg" role="group" aria-label="Part to edit">
-        <button id="edPickMel" aria-pressed="true">Melody</button><button id="edPickHar" aria-pressed="false">Harmony</button>
+        <button id="edPickMel" aria-pressed="true">Melody</button><button id="edPickHar" aria-pressed="false">Harmony</button><button id="edPickBoth" aria-pressed="false">Both</button>
       </div>
     </div>
     <p class="small" id="edHint">Drag across the waveform to select a section. Tap once to set where playback starts. The other part shows faintly behind so you can see how they line up.</p>
@@ -223,8 +223,8 @@
       <div class="actions">
         <button class="recbtn" id="opPunch">Re-record this section<small>Plays from a little before, then you play just this spot</small></button>
         <button id="opSilence">Silence it<small>Removes a squeak or noise; timing stays the same</small></button>
-        <button id="opDelete">Cut it out<small>Later notes slide earlier to close the gap</small></button>
-        <button id="opKeep">Keep only this<small>Trims everything before and after</small></button>
+        <button id="opDelete">Cut it out<small id="opDeleteSub">Later notes slide earlier to close the gap</small></button>
+        <button id="opKeep">Keep only this<small>Trims both parts to your selection and removes the rest</small></button>
         <button id="opFadeIn">Fade in<small>Gets louder across the selection</small></button>
         <button id="opFadeOut">Fade out<small>Gets softer across the selection</small></button>
       </div>
@@ -251,7 +251,7 @@
     <details>
       <summary>How to edit</summary>
       <ol>
-        <li>Choose Melody or Harmony at the top of this card.</li>
+        <li>Choose Melody, Harmony, or Both at the top of this card. Both changes the two parts together, so they stay lined up.</li>
         <li>Drag across the waveform to select a spot. Use Zoom in for small spots, and drag the gold edges or tap &minus; and + to adjust the start and end.</li>
         <li>Tap Play selection to check that you picked the right notes.</li>
         <li>Pick a fix. Re-record this section is best for a wrong note: the music starts a couple of seconds early, the part you are fixing goes quiet at the selection, and you play just that spot. The new notes blend in smoothly.</li>
@@ -301,7 +301,8 @@
   var OTHER = { melody: 'harmony', harmony: 'melody' };
 
   var S = { bpm: 100, meter: 4, countBars: 1, clickRec: true, clickVol: 0.6, guideVol: 1, latencyMs: null, trim: true, norm: true };
-  function newTrack(vol, pan) { return { buf: null, hist: [], vol: vol, pan: pan, mute: false, off: 0, base: 0 }; }
+  function newTrack(vol, pan) { return { buf: null, vol: vol, pan: pan, mute: false, off: 0, base: 0 }; }
+  var HIST = [];
   var T = { melody: newTrack(1, -0.35), harmony: newTrack(0.85, 0.35) };
 
   var ctx = null, stream = null, micSrc = null, analyser = null, capNode = null, useWorklet = false;
@@ -447,17 +448,27 @@
     t.buf = makeBuf(cut < d.length ? d.slice(cut) : new Float32Array(1), sr);
   }
   function normalizeOffs() { NAMES.forEach(fixNegative); }
-  function pushHist(n) {
-    var t = T[n];
-    t.hist.push({ buf: t.buf, off: t.off, base: t.base });
-    if (t.hist.length > 20) t.hist.shift();
+  function pushHist() {
+    var snap = {};
+    NAMES.forEach(function (n) { snap[n] = { buf: T[n].buf, off: T[n].off, base: T[n].base }; });
+    HIST.push(snap);
+    if (HIST.length > 30) HIST.shift();
   }
-  function undo(n) {
-    var t = T[n], h = t.hist.pop(); if (!h) return;
-    t.buf = h.buf; t.off = h.off; t.base = h.base;
-    normalizeOffs(); clampSel(); persist(); render();
+  function undo() {
+    var h = HIST.pop(); if (!h) return;
+    NAMES.forEach(function (n) { T[n].buf = h[n].buf; T[n].off = h[n].off; T[n].base = h[n].base; });
+    if (seekTl < tlStart()) seekTl = tlStart();
+    clampSel(); persist(); render();
     edMsg('Undone.', 'ok');
   }
+  // the timeline runs from the first recorded sound to the last
+  function tlStart() {
+    var m = Infinity;
+    NAMES.forEach(function (n) { if (T[n].buf) m = Math.min(m, T[n].off / 1000); });
+    return m === Infinity ? 0 : m;
+  }
+  function span() { return Math.max(0, totalLen() - tlStart()); }
+  function rel(x) { return fmt2(x - tlStart()); }
 
   // ---------- recording ----------
   function record(name) {
@@ -532,7 +543,7 @@
       recState = null; busy = false; $('recbar').hidden = true; releaseAwake();
       if (data.length < sr * 0.75) { micMsg('That take was too short, so it was not kept.', 'err'); setBusyUI(); return; }
       var t = T[r.name];
-      pushHist(r.name);
+      pushHist();
       t.buf = makeBuf(data, sr); t.off = 0; t.base = 0;
       normalizeOffs();
       var peak = 0; for (var i = 0; i < data.length; i += 4) { var a = Math.abs(data[i]); if (a > peak) peak = a; }
@@ -546,7 +557,8 @@
 
   // ---------- re-record a section (punch in) ----------
   function punch() {
-    var n = E.track, t = T[n];
+    var n = E.track; if (n === 'both') return;
+    var t = T[n];
     if (!t.buf || !E.sel || recState || busy) return;
     stopPlay();
     ensureMic().then(function () {
@@ -570,7 +582,7 @@
       }
       startCapture();
       recState = { kind: 'punch', name: n, a: a, b: b, startTl: startTl, when: when, lat: latencySec(), srcs: srcs, timer: timer };
-      $('recWhat').textContent = 'Fixing the ' + n + ', ' + fmt2(a) + ' to ' + fmt2(b);
+      $('recWhat').textContent = 'Fixing the ' + n + ', ' + rel(a) + ' to ' + rel(b);
       $('recSub').textContent = 'Listen. Play from the start of your selection.';
       $('recBig').textContent = Math.ceil(a - startTl);
       $('recStop').textContent = 'Cancel';
@@ -614,10 +626,10 @@
         if (i < nx) w = i / nx; else if (i > rec.length - nx) w = (rec.length - i) / nx;
         out[j] = out[j] * (1 - w) + rec[i] * w;
       }
-      pushHist(r.name);
+      pushHist();
       t.buf = makeBuf(out, sr);
       if (shift) { t.off -= shift / sr * 1000; t.base -= shift / sr * 1000; normalizeOffs(); }
-      seekTl = Math.max(0, r.a - 1);
+      seekTl = Math.max(tlStart(), r.a - 1);
       persist(); render();
       edMsg('Fixed. Tap Play selection to hear it, or Undo last change to go back.', 'ok');
     });
@@ -629,54 +641,67 @@
   }
 
   // ---------- simple edits ----------
-  function selIdx(t) {
+  function scopeNames() { return E.track === 'both' ? NAMES.slice() : [E.track]; }
+  function idxFor(t, a, b) {
     var sr = t.buf.sampleRate, off = t.off / 1000, len = t.buf.length;
-    var ia = Math.max(0, Math.min(len, Math.round((E.sel.a - off) * sr)));
-    var ib = Math.max(0, Math.min(len, Math.round((E.sel.b - off) * sr)));
-    return { ia: ia, ib: ib, sr: sr };
+    return { ia: Math.max(0, Math.min(len, Math.round((a - off) * sr))), ib: Math.max(0, Math.min(len, Math.round((b - off) * sr))), sr: sr };
   }
   function edit(kind) {
-    var n = E.track, t = T[n];
-    if (!t.buf || !E.sel || recState || busy) return;
+    if (!E.sel || recState || busy) return;
+    var names = (kind === 'keep' ? NAMES : scopeNames()).filter(function (n) { return T[n].buf; });
+    var a = E.sel.a, b = E.sel.b;
+    var touched = names.filter(function (n) { var x = idxFor(T[n], a, b); return x.ib - x.ia > x.sr * 0.01; });
+    if (!touched.length) { edMsg('The selection does not cover any recorded sound. Select a spot inside the waveform.', 'err'); return; }
     stopPlay();
-    var s = selIdx(t), ia = s.ia, ib = s.ib, sr = s.sr, d = t.buf.getChannelData(0), out, i;
-    if (ib - ia < sr * 0.01) { edMsg('The selection does not cover any of the ' + n + '. Select a spot inside the waveform.', 'err'); return; }
-    var ramp = Math.round(0.01 * sr);
-    pushHist(n);
-    if (kind === 'silence') {
-      out = d.slice();
-      for (i = ia; i < ib; i++) {
-        var k = i - ia, w = 0;
-        if (k < ramp) w = 1 - k / ramp; else if (ib - i < ramp) w = 1 - (ib - i) / ramp;
-        out[i] *= w;
+    pushHist();
+    names.forEach(function (n) {
+      var t = T[n], x = idxFor(t, a, b), ia = x.ia, ib = x.ib, sr = x.sr, d = t.buf.getChannelData(0), out, i;
+      var ramp = Math.round(0.01 * sr), off = t.off / 1000;
+      if (kind === 'keep') {
+        if (ib - ia < sr * 0.01) { t.buf = null; t.off = 0; t.base = 0; return; }
+        out = d.slice(ia, ib);
+        for (i = 0; i < ramp && i < out.length; i++) { out[i] *= i / ramp; out[out.length - 1 - i] *= i / ramp; }
+        t.off += ia / sr * 1000; t.base += ia / sr * 1000;
+      } else if (kind === 'delete') {
+        if (ib - ia < 1) {
+          if (E.track === 'both' && off >= b) { t.off -= (b - a) * 1000; t.base -= (b - a) * 1000; }
+          return;
+        }
+        out = new Float32Array(d.length - (ib - ia));
+        out.set(d.subarray(0, ia), 0); out.set(d.subarray(ib), ia);
+        for (i = 0; i < ramp && ia - ramp + i >= 0 && ia + i < out.length; i++) {
+          var w2 = i / ramp;
+          out[ia - ramp + i] = d[ia - ramp + i] * (1 - w2) + (d[ib - ramp + i] || 0) * w2;
+        }
+        if (E.track === 'both' && off > a) { var mv = Math.min(off - a, b - a); t.off -= mv * 1000; t.base -= mv * 1000; }
+      } else {
+        if (ib - ia < 1) return;
+        out = d.slice();
+        for (i = ia; i < ib; i++) {
+          var k = i - ia, w = 1;
+          if (kind === 'silence') { w = 0; if (k < ramp) w = 1 - k / ramp; else if (ib - i < ramp) w = 1 - (ib - i) / ramp; }
+          else { var p = (i - ia) / (ib - ia); w = kind === 'fadein' ? p * p : (1 - p) * (1 - p); }
+          out[i] *= w;
+        }
       }
-      edMsg('Silenced ' + fmt2(E.sel.a) + ' to ' + fmt2(E.sel.b) + '.', 'ok');
+      t.buf = makeBuf(out, sr);
+    });
+    var who = names.length > 1 ? 'both parts' : 'the ' + names[0];
+    if (kind === 'keep') {
+      E.sel = null; seekTl = tlStart(); resetView();
+      edMsg('Trimmed both parts. Only your selection is left, and it now starts at 0:00. Tap Undo last change to get the rest back.', 'ok');
     } else if (kind === 'delete') {
-      out = new Float32Array(d.length - (ib - ia));
-      out.set(d.subarray(0, ia), 0); out.set(d.subarray(ib), ia);
-      for (i = 0; i < ramp && ia - ramp + i >= 0 && ia + i < out.length; i++) {
-        var w2 = i / ramp;
-        out[ia - ramp + i] = d[ia - ramp + i] * (1 - w2) + (d[ib - ramp + i] || 0) * w2;
-      }
-      edMsg('Cut out ' + (Math.round((ib - ia) / sr * 100) / 100) + ' seconds. Notes after it moved earlier.', 'ok');
+      edMsg('Cut ' + (Math.round((b - a) * 100) / 100) + ' seconds from ' + who + '.' + (names.length > 1 ? '' : ' Notes after it moved earlier; the other part did not move.'), 'ok');
       E.sel = null;
-    } else if (kind === 'keep') {
-      out = d.slice(ia, ib);
-      for (i = 0; i < ramp && i < out.length; i++) { out[i] *= i / ramp; out[out.length - 1 - i] *= i / ramp; }
-      t.off += ia / sr * 1000; t.base += ia / sr * 1000;
-      edMsg('Trimmed. Only your selection is left.', 'ok');
-    } else if (kind === 'fadein' || kind === 'fadeout') {
-      out = d.slice();
-      for (i = ia; i < ib; i++) { var p = (i - ia) / (ib - ia); out[i] *= kind === 'fadein' ? p * p : (1 - p) * (1 - p); }
-      edMsg(kind === 'fadein' ? 'Faded in.' : 'Faded out.', 'ok');
-    }
-    t.buf = makeBuf(out, sr);
+    } else if (kind === 'silence') edMsg('Silenced ' + rel(a) + ' to ' + rel(b) + ' in ' + who + '.', 'ok');
+    else edMsg((kind === 'fadein' ? 'Faded in ' : 'Faded out ') + who + '.', 'ok');
     normalizeOffs(); clampSel(); persist(); render();
   }
   var moveTimer = null;
   function move(ms) {
-    var n = E.track, t = T[n]; if (!t.buf || recState || busy) return;
-    if (!moveTimer) pushHist(n); // one undo step for a burst of taps
+    var n = E.track; if (n === 'both') return;
+    var t = T[n]; if (!t.buf || recState || busy) return;
+    if (!moveTimer) pushHist(); // one undo step for a burst of taps
     clearTimeout(moveTimer); moveTimer = setTimeout(function () { moveTimer = null; }, 1500);
     t.off += ms;
     normalizeOffs(); persist(); render();
@@ -726,14 +751,14 @@
     ensureCtx();
     var len = totalLen(); if (!len) return;
     var to = Math.min(len, toTl == null ? len : toTl);
-    var startTl = Math.max(0, Math.min(fromTl || 0, to - 0.05));
+    var startTl = Math.max(tlStart(), Math.min(fromTl || 0, to - 0.05));
     var when = ctx.currentTime + 0.06, srcs = [];
     NAMES.forEach(function (n) {
       if (!T[n].buf || T[n].mute || (only && only !== n)) return;
       var s = addTrack(ctx, T[n], ctx.destination, when, startTl, 1);
       if (s) { s.stop(when + (to - startTl) + 0.02); srcs.push(s); }
     });
-    play = { srcs: srcs, when: when, startTl: startTl, to: to, only: only || null, origin: fromTl || 0 };
+    play = { srcs: srcs, when: when, startTl: startTl, to: to, only: only || null, origin: startTl };
     $('stopBtn').disabled = false; $('edStop').disabled = false;
     $('playBtn').textContent = 'Playing...';
     playLoop();
@@ -746,16 +771,16 @@
     $('playBtn').textContent = 'Play both parts';
     drawAll();
   }
-  function playPos() { return play ? Math.max(0, play.startTl + (ctx.currentTime - play.when)) : seekTl; }
+  function playPos() { return play ? Math.max(0, play.startTl + (ctx.currentTime - play.when)) : Math.max(seekTl, tlStart()); }
   function playLoop() {
     if (!play) return;
     var p = playPos();
     if (p >= play.to) { seekTl = play.origin; stopPlay(); updateTime(); return; }
-    if (E.follow && (p < E.view.start || p > E.view.start + E.view.dur)) { E.view.start = Math.max(0, p - E.view.dur * 0.1); clampView(); }
+    if (E.follow && (p < E.view.start || p > E.view.start + E.view.dur)) { E.view.start = p - E.view.dur * 0.1; clampView(); }
     drawAll(); updateTime();
     requestAnimationFrame(playLoop);
   }
-  function updateTime() { $('timeVal').textContent = fmt(playPos()) + ' / ' + fmt(totalLen()); }
+  function updateTime() { $('timeVal').textContent = fmt(playPos() - tlStart()) + ' / ' + fmt(span()); }
 
   // ---------- drawing ----------
   function cssv(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -791,18 +816,18 @@
   function drawWave(name) {
     var cv = $('wave-' + name), z = sizeCanvas(cv, 76), g = cv.getContext('2d');
     g.clearRect(0, 0, z.w, z.h);
-    var t = T[name], len = totalLen();
+    var t = T[name], s0 = tlStart(), len = span();
     $('empty-' + name).hidden = !!t.buf;
     if (!t.buf || !len) return;
-    var view = { start: 0, dur: len };
+    var view = { start: s0, dur: len };
     drawTrack(g, t, view, z.w, z.h, t.mute ? cssv('--muted') : cssv(name === 'melody' ? '--mel' : '--har'), 1);
     var pos = playPos();
-    if (play || pos > 0) { g.fillStyle = cssv('--playhead'); g.fillRect(Math.round(pos / len * z.w), 0, Math.max(2, z.dpr * 2), z.h); }
+    if (play || pos > s0) { g.fillStyle = cssv('--playhead'); g.fillRect(Math.round((pos - s0) / len * z.w), 0, Math.max(2, z.dpr * 2), z.h); }
   }
   function drawEditor() {
     var cv = $('edCanvas'), z = sizeCanvas(cv, 150), g = cv.getContext('2d');
     g.clearRect(0, 0, z.w, z.h);
-    var n = E.track, t = T[n], o = T[OTHER[n]], v = E.view;
+    var both = E.track === 'both', n = both ? 'melody' : E.track, t = T[n], o = T[OTHER[n]], v = E.view;
     if (!totalLen()) { $('edT0').textContent = '0:00.00'; $('edT1').textContent = '0:00.00'; return; }
     var X = function (tl) { return (tl - v.start) / v.dur * z.w; };
     if (E.sel) {
@@ -811,8 +836,8 @@
       g.fillStyle = cssv('--sel-edge'); g.fillRect(x0 - z.dpr, 0, 2 * z.dpr, z.h); g.fillRect(x1 - z.dpr, 0, 2 * z.dpr, z.h);
       g.fillRect(x0 - 5 * z.dpr, 0, 10 * z.dpr, 8 * z.dpr); g.fillRect(x1 - 5 * z.dpr, z.h - 8 * z.dpr, 10 * z.dpr, 8 * z.dpr);
     }
-    if (o.buf) drawTrack(g, o, v, z.w, z.h, cssv(OTHER[n] === 'melody' ? '--mel' : '--har'), 0.22);
-    if (t.buf) drawTrack(g, t, v, z.w, z.h, cssv(n === 'melody' ? '--mel' : '--har'), 0.95);
+    if (o.buf) drawTrack(g, o, v, z.w, z.h, cssv(OTHER[n] === 'melody' ? '--mel' : '--har'), both ? 0.7 : 0.22);
+    if (t.buf) drawTrack(g, t, v, z.w, z.h, cssv(n === 'melody' ? '--mel' : '--har'), both ? 0.7 : 0.95);
     // beat ticks on the count-in grid
     var spb = 60 / S.bpm;
     if (v.dur / spb < z.w / (6 * z.dpr)) {
@@ -825,37 +850,36 @@
     }
     var pos = playPos();
     if (pos >= v.start && pos <= v.start + v.dur) { g.fillStyle = cssv('--playhead'); g.fillRect(Math.round(X(pos)), 0, Math.max(2, z.dpr * 2), z.h); }
-    $('edT0').textContent = fmt2(v.start); $('edT1').textContent = fmt2(v.start + v.dur);
+    $('edT0').textContent = rel(v.start); $('edT1').textContent = rel(v.start + v.dur);
   }
   function drawAll() { NAMES.forEach(drawWave); drawEditor(); }
 
   // ---------- editor view and selection ----------
   function zoomFromSlider(val) { return Math.pow(2, val / 100 * 7); } // 1x to 128x
-  function resetView() { E.zoom = 1; $('edZoom').value = 0; E.view.start = 0; E.view.dur = Math.max(0.5, totalLen()); syncScroll(); }
+  function resetView() { E.zoom = 1; $('edZoom').value = 0; E.view.start = tlStart(); E.view.dur = Math.max(0.5, span()); syncScroll(); }
   function clampView() {
-    var len = Math.max(0.5, totalLen());
+    var s0 = tlStart(), len = Math.max(0.5, span());
     E.view.dur = Math.max(0.05, Math.min(len, len / E.zoom));
-    E.view.start = Math.max(0, Math.min(len - E.view.dur, E.view.start));
+    E.view.start = Math.max(s0, Math.min(s0 + len - E.view.dur, E.view.start));
     syncScroll();
   }
   function syncScroll() {
-    var len = Math.max(0.5, totalLen()), room = len - E.view.dur;
+    var len = Math.max(0.5, span()), room = len - E.view.dur;
     $('edScroll').disabled = room <= 0.001;
-    $('edScroll').value = room > 0 ? Math.round(E.view.start / room * 1000) : 0;
+    $('edScroll').value = room > 0 ? Math.round((E.view.start - tlStart()) / room * 1000) : 0;
   }
   function setZoom(z, centerTl) {
     var c = centerTl == null ? E.view.start + E.view.dur / 2 : centerTl;
     E.zoom = Math.max(1, Math.min(128, z));
     $('edZoom').value = Math.round(Math.log(E.zoom) / Math.log(2) / 7 * 100);
-    var len = Math.max(0.5, totalLen());
-    E.view.dur = Math.max(0.05, len / E.zoom);
+    E.view.dur = Math.max(0.05, Math.max(0.5, span()) / E.zoom);
     E.view.start = c - E.view.dur / 2;
     clampView(); drawEditor();
   }
   function clampSel() {
     if (!E.sel) return;
-    var len = totalLen();
-    E.sel.a = Math.max(0, Math.min(len, E.sel.a)); E.sel.b = Math.max(0, Math.min(len, E.sel.b));
+    var s0 = tlStart(), s1 = totalLen();
+    E.sel.a = Math.max(s0, Math.min(s1, E.sel.a)); E.sel.b = Math.max(s0, Math.min(s1, E.sel.b));
     if (E.sel.b - E.sel.a < 0.01) E.sel = null;
   }
 
@@ -876,7 +900,7 @@
   }
   function onMove(e) {
     if (!drag) return;
-    var len = totalLen(), tl = Math.max(0, Math.min(len, tlFromEvent(e)));
+    var tl = Math.max(tlStart(), Math.min(totalLen(), tlFromEvent(e)));
     if (drag.mode === 'new') {
       if (!drag.moved && Math.abs(e.clientX - drag.x) < 5) return;
       drag.moved = true;
@@ -888,7 +912,7 @@
   function onUp(e) {
     if (!drag) return;
     if (drag.mode === 'new' && !drag.moved) {
-      seekTl = Math.max(0, Math.min(totalLen(), drag.anchor));
+      seekTl = Math.max(tlStart(), Math.min(totalLen(), drag.anchor));
       if (play) playAll(seekTl, null, play.only);
       E.sel = null;
     }
@@ -897,7 +921,7 @@
   function nudgeEdge(which, d) {
     if (!E.sel) return;
     var step = Math.max(0.01, Math.min(0.1, E.view.dur / 200));
-    if (which === 'a') E.sel.a = Math.max(0, Math.min(E.sel.b - 0.01, E.sel.a + d * step));
+    if (which === 'a') E.sel.a = Math.max(tlStart(), Math.min(E.sel.b - 0.01, E.sel.a + d * step));
     else E.sel.b = Math.min(totalLen(), Math.max(E.sel.a + 0.01, E.sel.b + d * step));
     updateSelUI(); drawEditor();
   }
@@ -906,8 +930,9 @@
   function renderMix(names) {
     var len = 0, sr = 48000;
     names.forEach(function (n) { var t = T[n]; if (t.buf) { len = Math.max(len, t.off / 1000 + t.buf.duration); sr = t.buf.sampleRate; } });
-    var oc = new OfflineAudioContext(2, Math.ceil((len + 0.1) * sr), sr);
-    names.forEach(function (n) { if (T[n].buf) addTrack(oc, T[n], oc.destination, 0, 0, 1); });
+    var s0 = Infinity; names.forEach(function (n) { if (T[n].buf) s0 = Math.min(s0, T[n].off / 1000); }); if (s0 === Infinity) s0 = 0;
+    var oc = new OfflineAudioContext(2, Math.ceil((len - s0 + 0.1) * sr), sr);
+    names.forEach(function (n) { if (T[n].buf) addTrack(oc, T[n], oc.destination, 0, s0, 1); });
     return oc.startRendering().then(function (out) {
       var L = out.getChannelData(0), R = out.getChannelData(1), N = L.length, peak = 0, i;
       for (i = 0; i < N; i++) { var a = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (a > peak) peak = a; }
@@ -1043,11 +1068,13 @@
     NAMES.forEach(function (n) { $('vol-' + n).value = T[n].vol; $('pan-' + n).value = T[n].pan; $('mute-' + n).checked = T[n].mute; });
   }
   function updateSelUI() {
-    var has = !!E.sel, t = T[E.track], ok = has && !!t.buf && !busy && !recState;
-    $('aVal').textContent = has ? fmt2(E.sel.a) : '–';
-    $('bVal').textContent = has ? fmt2(E.sel.b) : '–';
+    var both = E.track === 'both', has = !!E.sel, anyBuf = both ? !!(T.melody.buf || T.harmony.buf) : !!T[E.track].buf, ok = has && anyBuf && !busy && !recState;
+    $('aVal').textContent = has ? rel(E.sel.a) : '\u2013';
+    $('bVal').textContent = has ? rel(E.sel.b) : '\u2013';
     ['aMinus', 'aPlus', 'bMinus', 'bPlus', 'edZoomSel', 'edClear'].forEach(function (id) { $(id).disabled = !has || !!recState; });
     ['opPunch', 'opSilence', 'opDelete', 'opKeep', 'opFadeIn', 'opFadeOut'].forEach(function (id) { $(id).disabled = !ok; });
+    if (both) $('opPunch').disabled = true;
+    $('opKeep').disabled = !(has && (T.melody.buf || T.harmony.buf)) || busy || !!recState;
     $('edPlay').textContent = has ? 'Play selection' : 'Play from here';
     $('edPlay').disabled = !totalLen() || !!recState || busy;
   }
@@ -1058,7 +1085,7 @@
       $('rec-' + n).disabled = lock;
       $('rec-' + n).textContent = (t.buf ? 'Record ' + n + ' again' : 'Record ' + n);
       $('edit-' + n).hidden = !t.buf; $('edit-' + n).disabled = lock;
-      $('undo-' + n).hidden = !t.hist.length; $('undo-' + n).disabled = lock;
+      $('undo-' + n).hidden = !HIST.length; $('undo-' + n).disabled = lock;
       $('del-' + n).hidden = !t.buf; $('del-' + n).disabled = lock;
       $('pill-' + n).textContent = t.buf ? fmt(t.buf.duration) + ' recorded' : 'Not recorded';
       $('pill-' + n).className = 'pill' + (t.buf ? ' has' : '');
@@ -1071,21 +1098,24 @@
     $('melWav').disabled = lock || !T.melody.buf; $('harWav').disabled = lock || !T.harmony.buf;
     $('empty-harmony').textContent = T.melody.buf ? 'Tap Record harmony. The melody plays in your headphones while you record.' : 'Record the melody first. Then the melody plays while you record this part.';
     // editor
-    var et = T[E.track];
-    $('edPickMel').setAttribute('aria-pressed', E.track === 'melody'); $('edPickHar').setAttribute('aria-pressed', E.track === 'harmony');
-    $('edPickMel').disabled = lock; $('edPickHar').disabled = lock;
-    $('edUndo').disabled = lock || !et.hist.length;
-    $('edUndoInfo').textContent = et.hist.length ? et.hist.length + ' change' + (et.hist.length > 1 ? 's' : '') + ' can be undone on the ' + E.track + '.' : '';
-    ['mv-100', 'mv-10', 'mv10', 'mv100'].forEach(function (id) { $(id).disabled = lock || !et.buf || !T[OTHER[E.track]].buf; });
-    var sh = Math.round(et.off - et.base);
-    $('mvVal').textContent = (sh > 0 ? '+' : '') + sh + ' ms';
-    $('edHint').textContent = et.buf
+    var both = E.track === 'both', et = both ? null : T[E.track];
+    $('edPickMel').setAttribute('aria-pressed', E.track === 'melody'); $('edPickHar').setAttribute('aria-pressed', E.track === 'harmony'); $('edPickBoth').setAttribute('aria-pressed', both);
+    $('edPickMel').disabled = lock; $('edPickHar').disabled = lock; $('edPickBoth').disabled = lock;
+    $('edUndo').disabled = lock || !HIST.length;
+    $('edUndoInfo').textContent = HIST.length ? HIST.length + ' change' + (HIST.length > 1 ? 's' : '') + ' can be undone.' : '';
+    ['mv-100', 'mv-10', 'mv10', 'mv100'].forEach(function (id) { $(id).disabled = lock || both || !et.buf || !T[OTHER[E.track]].buf; });
+    var sh = both ? 0 : Math.round(et.off - et.base);
+    $('mvVal').textContent = both ? 'Pick Melody or Harmony' : (sh > 0 ? '+' : '') + sh + ' ms';
+    $('opDeleteSub').textContent = both ? 'Removes the spot from both parts; they stay lined up' : 'Removes it from this part only; later notes slide earlier';
+    $('edHint').textContent = both
+      ? 'Both parts are selected. Silence, Cut, and Fade change the two parts together, so they stay lined up. To re-record a spot or line up a part, choose Melody or Harmony.'
+      : et.buf
       ? 'Drag across the waveform to select a section of the ' + E.track + '. Tap once to set where playback starts. The ' + OTHER[E.track] + ' shows faintly behind so you can see how they line up.'
       : 'Record the ' + E.track + ' first. Then you can select any spot here and fix it.';
     updateSelUI();
   }
   function render() { setBusyUI(); clampView(); drawAll(); updateTime(); }
-  function pickTrack(n) { E.track = n; E.sel = null; edMsg('', 'info'); render(); }
+  function pickTrack(n) { E.track = n; edMsg('', 'info'); render(); }
 
   function bind() {
     $('micBtn').onclick = function () { ensureMic().catch(function () {}); };
@@ -1104,20 +1134,20 @@
       $('vol-' + n).oninput = function () { T[n].vol = +this.value; persist(); };
       $('pan-' + n).oninput = function () { T[n].pan = +this.value; persist(); };
       $('mute-' + n).onchange = function () { T[n].mute = this.checked; drawAll(); persist(); if (play) playAll(playPos(), play.to, play.only); };
-      $('undo-' + n).onclick = function () { undo(n); };
+      $('undo-' + n).onclick = undo;
       var armed = null;
       $('del-' + n).onclick = function () {
         var btn = this;
         if (!armed) { btn.textContent = 'Tap again to delete'; armed = setTimeout(function () { armed = null; btn.textContent = 'Delete'; }, 3000); return; }
         clearTimeout(armed); armed = null; btn.textContent = 'Delete';
-        stopPlay(); pushHist(n); T[n].buf = null; T[n].off = 0; T[n].base = 0;
+        stopPlay(); pushHist(); T[n].buf = null; T[n].off = 0; T[n].base = 0;
         normalizeOffs(); seekTl = 0; E.sel = null; persist(); resetView(); render();
         micMsg(cap(n) + ' deleted. Tap Undo to bring it back.', 'info');
       };
       $('box-' + n).onclick = function (e) {
-        var len = totalLen(); if (!len || recState) return;
+        var len = span(); if (!len || recState) return;
         var r = this.getBoundingClientRect();
-        seekTl = Math.max(0, Math.min(len, (e.clientX - r.left) / r.width * len));
+        seekTl = tlStart() + Math.max(0, Math.min(len, (e.clientX - r.left) / r.width * len));
         playAll(seekTl);
       };
     });
@@ -1132,6 +1162,7 @@
     // editor
     $('edPickMel').onclick = function () { pickTrack('melody'); };
     $('edPickHar').onclick = function () { pickTrack('harmony'); };
+    $('edPickBoth').onclick = function () { pickTrack('both'); };
     var cv = $('edCanvas');
     cv.addEventListener('pointerdown', onDown); cv.addEventListener('pointermove', onMove);
     cv.addEventListener('pointerup', onUp); cv.addEventListener('pointercancel', onUp);
@@ -1142,14 +1173,14 @@
       E.view.start += dx / cv.getBoundingClientRect().width * E.view.dur; clampView(); drawEditor();
     }, { passive: false });
     $('edZoom').oninput = function () { setZoom(zoomFromSlider(+this.value), E.sel ? (E.sel.a + E.sel.b) / 2 : null); };
-    $('edScroll').oninput = function () { var room = Math.max(0, totalLen() - E.view.dur); E.view.start = room * (+this.value) / 1000; E.follow = false; drawEditor(); };
+    $('edScroll').oninput = function () { var room = Math.max(0, span() - E.view.dur); E.view.start = tlStart() + room * (+this.value) / 1000; E.follow = false; drawEditor(); };
     $('edScroll').onchange = function () { E.follow = true; };
-    $('edZoomSel').onclick = function () { if (!E.sel) return; var d = (E.sel.b - E.sel.a) * 1.4 + 0.2; setZoom(Math.max(1, totalLen() / d), (E.sel.a + E.sel.b) / 2); };
+    $('edZoomSel').onclick = function () { if (!E.sel) return; var d = (E.sel.b - E.sel.a) * 1.4 + 0.2; setZoom(Math.max(1, span() / d), (E.sel.a + E.sel.b) / 2); };
     $('edClear').onclick = function () { E.sel = null; updateSelUI(); drawEditor(); };
     $('aMinus').onclick = function () { nudgeEdge('a', -1); }; $('aPlus').onclick = function () { nudgeEdge('a', 1); };
     $('bMinus').onclick = function () { nudgeEdge('b', -1); }; $('bPlus').onclick = function () { nudgeEdge('b', 1); };
     $('edPlay').onclick = function () {
-      var only = $('edBoth').checked ? null : E.track;
+      var only = $('edBoth').checked || E.track === 'both' ? null : E.track;
       if (E.sel) playAll(E.sel.a, E.sel.b, only); else playAll(seekTl, null, only);
       if (play) play.origin = E.sel ? E.sel.a : seekTl;
     };
@@ -1162,7 +1193,7 @@
     $('opFadeOut').onclick = function () { edit('fadeout'); };
     $('mv-100').onclick = function () { move(-100); }; $('mv-10').onclick = function () { move(-10); };
     $('mv10').onclick = function () { move(10); }; $('mv100').onclick = function () { move(100); };
-    $('edUndo').onclick = function () { undo(E.track); };
+    $('edUndo').onclick = undo;
 
     document.addEventListener('keydown', function (e) {
       if (e.code === 'Space' && recState && !/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); stopRecord(); }
